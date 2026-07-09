@@ -15,7 +15,7 @@ const STATUS_TONE: Record<string, Tone> = {
   onboarding: "amber", trial: "amber", pending: "amber", qualified: "amber", contacted: "amber", in_progress: "indigo",
   past_due: "red", failed: "red", overdue: "red", lost: "red", urgent: "red", unqualified: "red",
   open: "indigo", new: "indigo", todo: "indigo", high: "amber", medium: "neutral", low: "neutral",
-  draft: "neutral", paused: "neutral", canceled: "neutral", archived: "neutral", void: "neutral", refunded: "neutral",
+  draft: "neutral", paused: "neutral", canceled: "neutral", archived: "neutral", void: "neutral", voided: "neutral", refunded: "neutral",
 };
 
 export function StatusBadge({ status, tone }: { status: string; tone?: Tone }) {

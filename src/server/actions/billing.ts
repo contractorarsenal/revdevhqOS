@@ -7,7 +7,7 @@ import { services, subscriptions, invoices, invoiceItems, payments, clients } fr
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema } from "@/lib/validation";
-import { roundCents, toAmount } from "@/lib/finance/metrics";
+import { roundCents, toAmount, recalcInvoiceAfterVoid } from "@/lib/finance/metrics";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");
@@ -318,6 +318,59 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
       metadata: { amount: data.amount, method: data.method ?? undefined },
     });
     revalidateBilling(data.clientId ?? invoice?.clientId);
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/**
+ * Soft-removes a payment: status becomes "voided" (excluded from every
+ * revenue total and report), the row is kept for audit, and any linked
+ * invoice has its paid amount and status recalculated in the same
+ * transaction. Owners/admins only.
+ */
+export async function voidPayment(paymentId: string, reason?: string): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("admin");
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.id, paymentId), eq(payments.workspaceId, ctx.workspace.id)))
+      .limit(1);
+    if (!payment) throw new Error("Payment not found in this workspace.");
+    if (payment.status === "voided") throw new Error("This payment is already removed.");
+
+    const wasRevenue = payment.status === "succeeded";
+    await db.transaction(async (tx) => {
+      await tx
+        .update(payments)
+        .set({
+          status: "voided",
+          voidedAt: new Date(),
+          voidedBy: ctx.user.id,
+          voidReason: reason ?? null,
+        })
+        .where(eq(payments.id, payment.id));
+
+      if (payment.invoiceId && wasRevenue) {
+        const [inv] = await tx.select().from(invoices).where(eq(invoices.id, payment.invoiceId)).limit(1);
+        if (inv) {
+          const next = recalcInvoiceAfterVoid(inv, payment.amount);
+          await tx
+            .update(invoices)
+            .set({ amountPaid: String(next.amountPaid), status: next.status as typeof inv.status })
+            .where(eq(invoices.id, inv.id));
+        }
+      }
+    });
+
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "payment.voided", entityType: "payment", entityId: payment.id, clientId: payment.clientId,
+      metadata: { amount: Number(payment.amount), reason: reason ?? undefined },
+    });
+    revalidateBilling(payment.clientId);
     return { ok: true };
   } catch (err) {
     return actionError(err);

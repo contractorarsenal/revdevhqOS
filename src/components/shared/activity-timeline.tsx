@@ -18,6 +18,7 @@ const ACTION_LABELS: Record<string, string> = {
   "subscription.canceled": "canceled a subscription",
   "invoice.created": "created an invoice",
   "payment.recorded": "recorded a payment",
+  "payment.voided": "removed a payment",
   "task.completed": "completed a task",
   "note.added": "added a note",
 };

@@ -115,3 +115,26 @@ export function formatMoney(value: string | number | null | undefined, currency 
     maximumFractionDigits: toAmount(value) % 1 === 0 ? 0 : 2,
   }).format(toAmount(value));
 }
+
+/** Only succeeded payments count as collected revenue — pending, failed,
+ * refunded, and voided payments are excluded from every total and report. */
+export function isRevenuePayment(status: string): boolean {
+  return status === "succeeded";
+}
+
+/**
+ * Recalculates an invoice after one of its succeeded payments is voided.
+ * Pure: returns the new amountPaid and status without touching the database.
+ */
+export function recalcInvoiceAfterVoid(invoice: {
+  total: string | number;
+  amountPaid: string | number;
+  status: string;
+}, voidedAmount: string | number): { amountPaid: number; status: string } {
+  const newPaid = roundCents(Math.max(0, toAmount(invoice.amountPaid) - toAmount(voidedAmount)));
+  const paidInFull = newPaid >= toAmount(invoice.total) && toAmount(invoice.total) > 0;
+  let status = invoice.status;
+  if (invoice.status === "paid" && !paidInFull) status = "open";
+  if (paidInFull) status = "paid";
+  return { amountPaid: newPaid, status };
+}

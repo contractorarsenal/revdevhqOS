@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Plus, CreditCard, FileText, DollarSign, Package, Pause, Play, XCircle, Archive, CheckCircle2 } from "lucide-react";
+import { Plus, CreditCard, FileText, DollarSign, Package, Pause, Play, XCircle, Archive, CheckCircle2, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -15,7 +15,7 @@ import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMoney, invoiceBalance, isPastDue, toAmount } from "@/lib/finance/metrics";
-import { setSubscriptionStatus, setInvoiceStatus, markInvoicePaid, archiveService } from "@/server/actions/billing";
+import { setSubscriptionStatus, setInvoiceStatus, markInvoicePaid, archiveService, voidPayment } from "@/server/actions/billing";
 import { ServiceFormDialog } from "./service-form-dialog";
 import { SubscriptionFormDialog } from "./subscription-form-dialog";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
@@ -43,7 +43,7 @@ function BillingFilters({
   months: string[]; total: number; totalLabel: string;
 }) {
   return (
-    <span className="ml-auto flex flex-wrap items-center gap-2">
+    <span className="flex flex-wrap items-center gap-2">
       <span className="flex rounded-md bg-muted p-0.5">
         {[["all", "All"], ["monthly", "Monthly"], ["one_time", "One-time"]].map(([v, label]) => (
           <button
@@ -92,6 +92,26 @@ export function BillingView({
   const suggestedNumber = `INV-${String(1000 + invoices.length + 1)}`;
   const [payType, setPayType] = useState("all");
   const [payMonth, setPayMonth] = useState("all");
+  const [payView, setPayView] = useState<"active" | "removed">("active");
+  // Optimistic voiding: the row leaves the active list immediately and only
+  // comes back if the server rejects the void.
+  const [voidedIds, setVoidedIds] = useState<ReadonlySet<string>>(new Set());
+
+  async function removePayment(payment: any) {
+    setVoidedIds((prev) => new Set([...prev, payment.id]));
+    const result = await voidPayment(payment.id);
+    if (!result.ok) {
+      setVoidedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(payment.id);
+        return next;
+      });
+      toast.error(result.error ?? "Could not remove the payment.");
+      return;
+    }
+    toast.success("Payment removed.");
+    router.refresh();
+  }
   const [invType, setInvType] = useState("all");
   const [invMonth, setInvMonth] = useState("all");
 
@@ -104,10 +124,12 @@ export function BillingView({
     [invoices]
   );
   const filteredPayments = useMemo(
-    () => payments.filter((p) =>
-      (payType === "all" || p.paymentType === payType) && (payMonth === "all" || p.billingMonth === payMonth)
-    ),
-    [payments, payType, payMonth]
+    () => payments.filter((p) => {
+      const voided = p.status === "voided" || voidedIds.has(p.id);
+      if (payView === "active" ? voided : !voided) return false;
+      return (payType === "all" || p.paymentType === payType) && (payMonth === "all" || p.billingMonth === payMonth);
+    }),
+    [payments, payType, payMonth, payView, voidedIds]
   );
   const filteredInvoices = useMemo(
     () => invoices.filter((i) =>
@@ -228,6 +250,34 @@ export function BillingView({
     { accessorKey: "method", header: "Method", cell: ({ row }) => row.original.method ?? "—" },
     { accessorKey: "reference", header: "Reference", cell: ({ row }) => row.original.reference ?? "—" },
     { accessorKey: "paidAt", header: sortableHeader("Date"), cell: ({ row }) => new Date(row.original.paidAt).toLocaleDateString() },
+    {
+      id: "actions", header: "",
+      cell: ({ row }) => {
+        const p = row.original;
+        return (
+          <span className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+            {p.status !== "voided" ? (
+              <ConfirmationDialog
+                trigger={
+                  <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Remove payment">
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                }
+                title="Remove payment?"
+                description="Are you sure you want to remove this payment? This will remove it from billing totals and reports, but keep a record in case it needs to be reviewed later."
+                confirmLabel="Remove payment"
+                destructive
+                onConfirm={() => removePayment(p)}
+              />
+            ) : (
+              <span className="text-[11px] text-muted-foreground">
+                removed {p.voidedAt ? new Date(p.voidedAt).toLocaleDateString() : ""}
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
   ];
 
   const svcCols: ColumnDef<any>[] = [
@@ -318,6 +368,17 @@ export function BillingView({
             <DataTable columns={payCols} data={filteredPayments} searchPlaceholder="Search payments…"
               toolbar={
                 <>
+                  <span className="ml-auto flex rounded-md bg-muted p-0.5">
+                    {([["active", "Active"], ["removed", "Removed"]] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        onClick={() => setPayView(v)}
+                        className={`rounded px-2.5 py-1 text-xs font-semibold ${payView === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
                   <BillingFilters type={payType} onType={setPayType} month={payMonth} onMonth={setPayMonth} months={payMonths} total={filteredCollected} totalLabel="Collected" />
                   <Button size="sm" variant="outline" className="gap-1" onClick={() => setPaymentForm(true)}><Plus className="size-3.5" /> Record payment</Button>
                 </>

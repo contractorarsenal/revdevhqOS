@@ -68,6 +68,8 @@ export async function listPayments(workspaceId: string) {
       method: payments.method,
       reference: payments.reference,
       paidAt: payments.paidAt,
+      voidedAt: payments.voidedAt,
+      voidReason: payments.voidReason,
       clientName: clients.name,
       invoiceId: payments.invoiceId,
     })
