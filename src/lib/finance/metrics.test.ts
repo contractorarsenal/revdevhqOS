@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
+  isRevenuePayment, recalcInvoiceAfterVoid,
 } from "./metrics";
 
 describe("normalizeToMonthly", () => {
@@ -90,5 +91,34 @@ describe("toAmount", () => {
     expect(toAmount("1234.56")).toBe(1234.56);
     expect(toAmount(null)).toBe(0);
     expect(toAmount("not-a-number")).toBe(0);
+  });
+});
+
+describe("payment voiding", () => {
+  it("only succeeded payments count as revenue", () => {
+    expect(isRevenuePayment("succeeded")).toBe(true);
+    for (const s of ["pending", "failed", "refunded", "voided"]) {
+      expect(isRevenuePayment(s)).toBe(false);
+    }
+  });
+
+  it("voiding the only payment on a paid invoice reopens it with zero paid", () => {
+    const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "1000", status: "paid" }, "1000");
+    expect(r).toEqual({ amountPaid: 0, status: "open" });
+  });
+
+  it("voiding a partial payment leaves the invoice partially paid and open", () => {
+    const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "700", status: "open" }, "300");
+    expect(r).toEqual({ amountPaid: 400, status: "open" });
+  });
+
+  it("invoice stays paid when remaining payments still cover the total", () => {
+    const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "1500", status: "paid" }, "500");
+    expect(r).toEqual({ amountPaid: 1000, status: "paid" });
+  });
+
+  it("never produces a negative paid amount", () => {
+    const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "200", status: "open" }, "500");
+    expect(r.amountPaid).toBe(0);
   });
 });

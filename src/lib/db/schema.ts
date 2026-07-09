@@ -11,7 +11,7 @@ export const opportunityStatus = pgEnum("opportunity_status", ["open", "won", "l
 export const subscriptionStatus = pgEnum("subscription_status", ["trial", "active", "past_due", "paused", "canceled", "completed"]);
 export const billingFrequency = pgEnum("billing_frequency", ["one_time", "weekly", "monthly", "quarterly", "yearly"]);
 export const invoiceStatus = pgEnum("invoice_status", ["draft", "open", "paid", "past_due", "void"]);
-export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded"]);
+export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded", "voided"]);
 export const taskStatus = pgEnum("task_status", ["todo", "in_progress", "completed", "canceled"]);
 export const taskPriority = pgEnum("task_priority", ["low", "medium", "high", "urgent"]);
 
@@ -225,6 +225,9 @@ export const payments = pgTable("payments", {
   method: text("method"),
   reference: text("reference"),
   paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  voidedBy: uuid("voided_by").references(() => profiles.id, { onDelete: "set null" }),
+  voidReason: text("void_reason"),
   createdAt: createdAt(),
 }, (t) => [
   index("payments_workspace_paid_idx").on(t.workspaceId, t.paidAt),
