@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
-  isRevenuePayment, recalcInvoiceAfterVoid,
+  isRevenuePayment, recalcInvoiceAfterVoid, paymentAttribution,
 } from "./metrics";
 
 describe("normalizeToMonthly", () => {
@@ -120,5 +120,30 @@ describe("payment voiding", () => {
   it("never produces a negative paid amount", () => {
     const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "200", status: "open" }, "500");
     expect(r.amountPaid).toBe(0);
+  });
+});
+
+describe("paymentAttribution", () => {
+  const invoice = { clientId: "client-A", billingFrequency: "monthly", billingMonth: "2026-07-01" };
+
+  it("uses the invoice's client even when the request names another client", () => {
+    const r = paymentAttribution(invoice, { clientId: "client-B", paymentType: "one_time", billingMonth: null });
+    expect(r.clientId).toBe("client-A");
+  });
+
+  it("copies invoice billing type and month", () => {
+    const r = paymentAttribution(invoice, { clientId: null, paymentType: "one_time", billingMonth: "2026-09-01" });
+    expect(r.paymentType).toBe("monthly");
+    expect(r.billingMonth).toBe("2026-07-01");
+  });
+
+  it("falls back to request month when invoice has none", () => {
+    const r = paymentAttribution({ ...invoice, billingMonth: null }, { clientId: null, paymentType: "one_time", billingMonth: "2026-09-01" });
+    expect(r.billingMonth).toBe("2026-09-01");
+  });
+
+  it("without an invoice, request values are used unchanged", () => {
+    const r = paymentAttribution(null, { clientId: "client-B", paymentType: "monthly", billingMonth: "2026-08-01" });
+    expect(r).toEqual({ clientId: "client-B", paymentType: "monthly", billingMonth: "2026-08-01" });
   });
 });

@@ -6,11 +6,13 @@ import { notes } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { noteSchema } from "@/lib/validation";
+import { assertWorkspaceRelations } from "@/server/workspace-guards";
 
 export async function addNote(input: unknown): Promise<ActionResult> {
   try {
     const ctx = await authorize("member");
     const data = noteSchema.parse(input);
+    await assertWorkspaceRelations(ctx.workspace.id, data);
     await db.insert(notes).values({
       workspaceId: ctx.workspace.id,
       body: data.body,

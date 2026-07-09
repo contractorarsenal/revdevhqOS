@@ -7,6 +7,7 @@ import { clients, contacts, clientOnboarding, onboardingTemplates, onboardingSte
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { clientSchema, contactSchema } from "@/lib/validation";
+import { assertWorkspaceMember } from "@/server/workspace-guards";
 
 async function ownedClient(workspaceId: string, clientId: string) {
   const [row] = await db
@@ -22,6 +23,7 @@ export async function createClient(input: unknown): Promise<ActionResult<{ id: s
   try {
     const ctx = await authorize("member");
     const data = clientSchema.parse(input);
+    await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
 
     const clientId = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -70,6 +72,7 @@ export async function updateClient(clientId: string, input: unknown): Promise<Ac
     const ctx = await authorize("member");
     await ownedClient(ctx.workspace.id, clientId);
     const data = clientSchema.parse(input);
+    await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
     await db
       .update(clients)
       .set({
