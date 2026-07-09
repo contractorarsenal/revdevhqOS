@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +13,7 @@ export function SignUpForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [confirmSent, setConfirmSent] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -32,20 +34,29 @@ export function SignUpForm() {
       setError(error.message || "Could not create the account.");
       return;
     }
-    if (!data.session) {
-      // Email confirmation is enabled on the Supabase project.
-      setConfirmSent(true);
+    if (data.session) {
+      // Email confirmation is disabled on the Supabase project — user is signed in.
+      toast.success("Account created — you're signed in.");
+      router.push("/setup");
+      router.refresh();
       return;
     }
-    router.push("/setup");
-    router.refresh();
+    // Supabase returned no session: this project currently requires email confirmation.
+    setNeedsConfirmation(true);
   }
 
-  if (confirmSent) {
+  if (needsConfirmation) {
     return (
-      <p className="rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
-        Check your email to confirm your account, then come back and sign in.
-      </p>
+      <div className="space-y-3">
+        <p className="rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+          Account created. This workspace currently requires email confirmation — we sent you a
+          link. Open it, then sign in. (Workspace admins can turn this off in Supabase:
+          Authentication → Providers → Email → “Confirm email”.)
+        </p>
+        <Button asChild variant="outline" size="sm" className="w-full">
+          <Link href="/sign-in">Go to sign in</Link>
+        </Button>
+      </div>
     );
   }
 
