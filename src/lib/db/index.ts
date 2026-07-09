@@ -1,26 +1,23 @@
 import "server-only";
-import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
 import { drizzle as drizzleNode, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import { Pool } from "pg";
-import ws from "ws";
 import { env } from "@/lib/env/server";
 import * as schema from "./schema";
 
 /**
- * All drivers are exposed under the node-postgres drizzle type: the query and
- * transaction APIs are structurally identical across neon-serverless,
- * node-postgres, and pglite drivers.
+ * Drizzle over Supabase Postgres.
  *
  * Driver selection:
- *  - neon.tech URLs → Neon serverless (WebSocket) driver; supports transactions
  *  - pglite:// URLs → embedded Postgres for local development (dev-only)
- *  - anything else → node-postgres (e.g. a local Postgres instance)
+ *  - anything else → node-postgres against DATABASE_URL (Supabase pooled
+ *    connection string; use the session/transaction pooler URL from the
+ *    Supabase dashboard — transactions are supported)
  *
- * The instance is created lazily on first query so that `next build` (which
- * imports route modules to collect page data) never opens a connection, and it
- * is cached on globalThis so dev-mode module reloads do not open extra
- * connections or PGlite file locks.
+ * The instance is created lazily on first query so `next build` never opens
+ * a connection, and cached on globalThis so dev-mode module reloads don't
+ * open extra connections or PGlite file locks. This connection uses the
+ * postgres role and is server-only; RLS locks the tables away from the
+ * anon/authenticated PostgREST roles.
  */
 export type Database = NodePgDatabase<typeof schema>;
 export type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -39,11 +36,13 @@ function createDb(): Database {
     const { drizzle } = require("drizzle-orm/pglite");
     return drizzle(new PGlite(url.replace("pglite://", "")), { schema }) as unknown as Database;
   }
-  if (url.includes("neon.tech")) {
-    neonConfig.webSocketConstructor = ws;
-    return drizzleNeon(new NeonPool({ connectionString: url }), { schema }) as unknown as Database;
-  }
-  return drizzleNode(new Pool({ connectionString: url }), { schema });
+  return drizzleNode(
+    new Pool({
+      connectionString: url,
+      ssl: url.includes("supabase.co") || url.includes("supabase.com") ? { rejectUnauthorized: false } : undefined,
+    }),
+    { schema }
+  );
 }
 
 function getDb(): Database {

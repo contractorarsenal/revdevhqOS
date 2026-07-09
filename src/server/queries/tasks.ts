@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tasks, users, clients, leads, opportunities } from "@/lib/db/schema";
+import { tasks, profiles, clients, leads, opportunities } from "@/lib/db/schema";
 
 export type TaskRow = Awaited<ReturnType<typeof listTasks>>[number];
 
@@ -16,7 +16,7 @@ export async function listTasks(workspaceId: string) {
       dueDate: tasks.dueDate,
       completedAt: tasks.completedAt,
       assigneeId: tasks.assigneeId,
-      assigneeName: users.name,
+      assigneeName: profiles.name,
       clientId: tasks.clientId,
       clientName: clients.name,
       leadId: tasks.leadId,
@@ -26,7 +26,7 @@ export async function listTasks(workspaceId: string) {
       createdAt: tasks.createdAt,
     })
     .from(tasks)
-    .leftJoin(users, eq(tasks.assigneeId, users.id))
+    .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
     .leftJoin(clients, eq(tasks.clientId, clients.id))
     .leftJoin(leads, eq(tasks.leadId, leads.id))
     .leftJoin(opportunities, eq(tasks.opportunityId, opportunities.id))

@@ -1,9 +1,11 @@
 /* Applies drizzle SQL migrations to whatever DATABASE_URL points at. */
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+config({ path: ".env" });
 
-const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
+const url = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL;
 if (!url) {
-  console.error("DATABASE_URL (or DATABASE_URL_UNPOOLED) is required");
+  console.error("DATABASE_URL (or DATABASE_URL_DIRECT) is required");
   process.exit(1);
 }
 

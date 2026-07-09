@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { leads, users } from "@/lib/db/schema";
+import { leads, profiles } from "@/lib/db/schema";
 
 export type LeadRow = Awaited<ReturnType<typeof listLeads>>[number];
 
@@ -19,7 +19,7 @@ export async function listLeads(workspaceId: string) {
       estimatedValue: leads.estimatedValue,
       estimatedMrr: leads.estimatedMrr,
       ownerId: leads.ownerId,
-      ownerName: users.name,
+      ownerName: profiles.name,
       nextFollowUpAt: leads.nextFollowUpAt,
       lastContactedAt: leads.lastContactedAt,
       notes: leads.notes,
@@ -27,7 +27,7 @@ export async function listLeads(workspaceId: string) {
       createdAt: leads.createdAt,
     })
     .from(leads)
-    .leftJoin(users, eq(leads.ownerId, users.id))
+    .leftJoin(profiles, eq(leads.ownerId, profiles.id))
     .where(eq(leads.workspaceId, workspaceId))
     .orderBy(desc(leads.createdAt));
 }

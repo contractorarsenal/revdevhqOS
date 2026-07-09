@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { pipelineStages, opportunities, users } from "@/lib/db/schema";
+import { pipelineStages, opportunities, profiles } from "@/lib/db/schema";
 
 export type StageWithOpps = Awaited<ReturnType<typeof listPipeline>>[number];
 
@@ -25,14 +25,14 @@ export async function listPipeline(workspaceId: string) {
       mrr: opportunities.mrr,
       status: opportunities.status,
       ownerId: opportunities.ownerId,
-      ownerName: users.name,
+      ownerName: profiles.name,
       expectedCloseDate: opportunities.expectedCloseDate,
       leadId: opportunities.leadId,
       clientId: opportunities.clientId,
       createdAt: opportunities.createdAt,
     })
     .from(opportunities)
-    .leftJoin(users, eq(opportunities.ownerId, users.id))
+    .leftJoin(profiles, eq(opportunities.ownerId, profiles.id))
     .where(eq(opportunities.workspaceId, workspaceId))
     .orderBy(desc(opportunities.createdAt));
 

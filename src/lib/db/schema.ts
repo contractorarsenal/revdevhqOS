@@ -19,49 +19,16 @@ const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull(
 const updatedAt = () =>
   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date());
 
-/* ========== authentication (Better Auth) ========== */
-export const users = pgTable("users", {
-  id: text("id").primaryKey(),
+/* ========== identity ========== */
+/**
+ * App profile for a Supabase Auth user. `id` mirrors auth.users.id — the
+ * FK to auth.users is added in raw SQL in the migration (cross-schema).
+ * Supabase Auth owns credentials & sessions; no auth tables live here.
+ */
+export const profiles = pgTable("profiles", {
+  id: uuid("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").notNull().default(false),
-  image: text("image"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
-
-export const sessions = pgTable("sessions", {
-  id: text("id").primaryKey(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  token: text("token").notNull().unique(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-}, (t) => [index("sessions_user_idx").on(t.userId)]);
-
-export const accounts = pgTable("accounts", {
-  id: text("id").primaryKey(),
-  accountId: text("account_id").notNull(),
-  providerId: text("provider_id").notNull(),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  idToken: text("id_token"),
-  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
-  scope: text("scope"),
-  password: text("password"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-}, (t) => [index("accounts_user_idx").on(t.userId)]);
-
-export const verifications = pgTable("verifications", {
-  id: text("id").primaryKey(),
-  identifier: text("identifier").notNull(),
-  value: text("value").notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  email: text("email").notNull(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -80,7 +47,7 @@ export const workspaces = pgTable("workspaces", {
 export const workspaceMembers = pgTable("workspace_members", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
   role: workspaceRole("role").notNull().default("member"),
   createdAt: createdAt(),
 }, (t) => [
@@ -99,7 +66,7 @@ export const clients = pgTable("clients", {
   industry: text("industry"),
   address: text("address"),
   status: clientStatus("status").notNull().default("onboarding"),
-  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+  ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   startDate: date("start_date"),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -134,7 +101,7 @@ export const leads = pgTable("leads", {
   serviceInterest: text("service_interest"),
   estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
   estimatedMrr: numeric("estimated_mrr", { precision: 12, scale: 2 }),
-  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+  ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
   lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
   notes: text("notes"),
@@ -166,7 +133,7 @@ export const opportunities = pgTable("opportunities", {
   value: numeric("value", { precision: 12, scale: 2 }).notNull().default("0"),
   mrr: numeric("mrr", { precision: 12, scale: 2 }).notNull().default("0"),
   status: opportunityStatus("status").notNull().default("open"),
-  ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+  ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   expectedCloseDate: date("expected_close_date"),
   wonAt: timestamp("won_at", { withTimezone: true }),
   lostAt: timestamp("lost_at", { withTimezone: true }),
@@ -265,7 +232,7 @@ export const tasks = pgTable("tasks", {
   description: text("description"),
   status: taskStatus("status").notNull().default("todo"),
   priority: taskPriority("priority").notNull().default("medium"),
-  assigneeId: text("assignee_id").references(() => users.id, { onDelete: "set null" }),
+  assigneeId: uuid("assignee_id").references(() => profiles.id, { onDelete: "set null" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
   leadId: uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
   opportunityId: uuid("opportunity_id").references(() => opportunities.id, { onDelete: "cascade" }),
@@ -283,7 +250,7 @@ export const notes = pgTable("notes", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   body: text("body").notNull(),
-  authorId: text("author_id").references(() => users.id, { onDelete: "set null" }),
+  authorId: uuid("author_id").references(() => profiles.id, { onDelete: "set null" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
   leadId: uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
   opportunityId: uuid("opportunity_id").references(() => opportunities.id, { onDelete: "cascade" }),
@@ -295,7 +262,7 @@ export const notes = pgTable("notes", {
 export const activityLogs = pgTable("activity_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-  actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorId: uuid("actor_id").references(() => profiles.id, { onDelete: "set null" }),
   action: text("action").notNull(),
   entityType: text("entity_type").notNull(),
   entityId: uuid("entity_id"),

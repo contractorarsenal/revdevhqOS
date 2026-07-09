@@ -3,7 +3,7 @@ import { and, eq, gte, lt, sql, inArray, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   subscriptions, invoices, payments, clients, opportunities, pipelineStages, tasks,
-  activityLogs, users,
+  activityLogs, profiles,
 } from "@/lib/db/schema";
 import {
   calculateMrr, calculateArr, outstandingRevenue, pastDueRevenue,
@@ -159,10 +159,10 @@ export async function getRecentActivity(workspaceId: string, limit = 12) {
       entityType: activityLogs.entityType,
       metadata: activityLogs.metadata,
       createdAt: activityLogs.createdAt,
-      actorName: users.name,
+      actorName: profiles.name,
     })
     .from(activityLogs)
-    .leftJoin(users, eq(activityLogs.actorId, users.id))
+    .leftJoin(profiles, eq(activityLogs.actorId, profiles.id))
     .where(eq(activityLogs.workspaceId, workspaceId))
     .orderBy(sql`${activityLogs.createdAt} desc`)
     .limit(limit);
