@@ -83,6 +83,36 @@ Never commit `.env*` files with values — they are gitignored.
 
 Schema changes: edit `src/lib/db/schema.ts` → `npm run db:generate` → review SQL → `npm run db:migrate`.
 
+## Production bootstrap (first admin)
+
+After migrations have been applied to the Supabase project:
+
+```bash
+# password read from local env only — never committed or printed
+ADMIN_PASSWORD='choose-a-strong-password' npm run admin:create
+# …or run `npm run admin:create` with no variable to be prompted (hidden input)
+```
+
+Creates (idempotently): a **confirmed** auth user `jay@revdevhq.com`, its
+`profiles` row, a **RevDevHQ** workspace with `owner` membership, and the
+default pipeline stages + onboarding template. Running it again changes
+nothing and never resets the password. Override with `ADMIN_EMAIL`,
+`ADMIN_NAME`, `WORKSPACE_NAME` if needed.
+
+### Supabase Auth URL configuration
+
+In **Supabase → Authentication → URL Configuration** set:
+
+- **Site URL**: your Vercel production URL
+- **Redirect URLs**:
+  - `http://localhost:3000/**`
+  - `https://YOUR-VERCEL-DOMAIN.vercel.app/**`
+
+If **Confirm email** (Authentication → Providers → Email) is enabled,
+self-serve sign-ups must confirm via email before signing in (`/auth/confirm`
+handles the link). The bootstrap admin is created pre-confirmed and can sign
+in immediately either way.
+
 ## Vercel deployment
 
 1. Import the GitHub repo `contractorarsenal/revdevhqOS` in Vercel (framework: Next.js — zero config).
