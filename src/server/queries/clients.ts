@@ -3,7 +3,7 @@ import { and, eq, desc, sql, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   clients, contacts, subscriptions, services, invoices, payments, tasks, notes,
-  activityLogs, users, clientOnboarding,
+  activityLogs, profiles, clientOnboarding,
 } from "@/lib/db/schema";
 import { calculateMrr, type SubscriptionLike } from "@/lib/finance/metrics";
 
@@ -20,10 +20,10 @@ export async function listClients(workspaceId: string) {
       startDate: clients.startDate,
       createdAt: clients.createdAt,
       ownerId: clients.ownerId,
-      ownerName: users.name,
+      ownerName: profiles.name,
     })
     .from(clients)
-    .leftJoin(users, eq(clients.ownerId, users.id))
+    .leftJoin(profiles, eq(clients.ownerId, profiles.id))
     .where(eq(clients.workspaceId, workspaceId))
     .orderBy(desc(clients.createdAt));
 
@@ -86,7 +86,7 @@ export async function getClientDetail(workspaceId: string, clientId: string) {
   if (!client) return null;
 
   const [owner] = client.ownerId
-    ? await db.select({ name: users.name }).from(users).where(eq(users.id, client.ownerId)).limit(1)
+    ? await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, client.ownerId)).limit(1)
     : [null];
 
   const [clientContacts, clientSubs, clientInvoices, clientPayments, clientTasks, clientNotes, clientActivity, onboarding] =
@@ -109,10 +109,10 @@ export async function getClientDetail(workspaceId: string, clientId: string) {
       db
         .select({
           id: activityLogs.id, action: activityLogs.action, metadata: activityLogs.metadata,
-          createdAt: activityLogs.createdAt, actorName: users.name,
+          createdAt: activityLogs.createdAt, actorName: profiles.name,
         })
         .from(activityLogs)
-        .leftJoin(users, eq(activityLogs.actorId, users.id))
+        .leftJoin(profiles, eq(activityLogs.actorId, profiles.id))
         .where(and(eq(activityLogs.clientId, clientId), eq(activityLogs.workspaceId, workspaceId)))
         .orderBy(desc(activityLogs.createdAt))
         .limit(30),

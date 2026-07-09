@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { clientOnboarding, clients, users } from "@/lib/db/schema";
+import { clientOnboarding, clients, profiles } from "@/lib/db/schema";
 
 export async function listOnboarding(workspaceId: string) {
   const rows = await db
@@ -9,7 +9,7 @@ export async function listOnboarding(workspaceId: string) {
       clientId: clients.id,
       clientName: clients.name,
       clientStatus: clients.status,
-      ownerName: users.name,
+      ownerName: profiles.name,
       stepId: clientOnboarding.id,
       stepName: clientOnboarding.stepName,
       position: clientOnboarding.position,
@@ -18,7 +18,7 @@ export async function listOnboarding(workspaceId: string) {
     })
     .from(clientOnboarding)
     .innerJoin(clients, eq(clientOnboarding.clientId, clients.id))
-    .leftJoin(users, eq(clients.ownerId, users.id))
+    .leftJoin(profiles, eq(clients.ownerId, profiles.id))
     .where(and(eq(clientOnboarding.workspaceId, workspaceId), inArray(clients.status, ["onboarding", "active"])))
     .orderBy(clients.name, clientOnboarding.position);
 

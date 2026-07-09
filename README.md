@@ -5,109 +5,118 @@ billing, tasks, onboarding, and financial reporting in one workspace.
 
 ## Stack
 
-- **Next.js 16** (App Router, React 19, TypeScript, Turbopack)
-- **Neon PostgreSQL** via **Drizzle ORM** (`drizzle-kit` migrations)
-- **Better Auth** — email/password sessions stored in Postgres
+- **Next.js 16** (App Router, React 19, TypeScript)
+- **Supabase** — Postgres database + **Supabase Auth** (email/password, `@supabase/ssr`)
+- **Drizzle ORM** for schema, migrations, and all server-side queries
 - **Tailwind CSS 4 + shadcn/ui** — design system ported from `design-reference/original-prototype.html`
 - **dnd-kit** (pipeline board), **TanStack Table**, **Recharts**, **react-hook-form + Zod**
-- **Vitest** for unit tests, **Railway** for hosting
+- **Vitest** for unit tests, **Vercel** for hosting, GitHub for source control
 
 ## Architecture
 
 ```
 src/
-  app/            routes: (auth)/sign-in|sign-up, setup, (dashboard)/<feature>, api/auth
+  app/            routes: (auth)/sign-in|sign-up, auth/confirm, setup, (dashboard)/<feature>
   components/     ui/ (shadcn), layout/ (sidebar, topbar), shared/ (DataTable, MetricCard, …)
   features/       feature UIs: clients, leads, pipeline, billing, tasks, onboarding, reports, settings
-  lib/            auth/ (Better Auth + session helpers), db/ (drizzle client + schema),
-                  env/ (Zod-validated server env), finance/ (money math), permissions/, validation/
+  lib/            supabase/ (browser/server/admin clients), auth/ (session + workspace helpers),
+                  db/ (drizzle client + schema), env/ (lazy Zod-validated env), finance/, permissions/, validation/
   server/         actions/ (all mutations, "use server"), queries/ (all reads), authorize.ts, activity.ts
-drizzle/          generated SQL migrations
+drizzle/          SQL migrations (0000 schema, 0001 auth-FK + RLS hardening)
 scripts/          migrate.ts, seed.ts (dev-only demo data), e2e-check.mjs
 design-reference/ original static prototype (visual reference only — not the app)
 ```
 
+**Auth model:** Supabase Auth owns identities, credentials, and sessions.
+`src/proxy.ts` refreshes the session and redirects unauthenticated requests;
+`requireUser()` validates the session server-side and maintains a `profiles`
+row; `requireWorkspace()` enforces workspace membership + role on every query
+and mutation. There is exactly one auth system.
+
 **Data path for every feature:** form (react-hook-form + Zod) → server action
-(`authorize()` validates session + workspace membership + role, Zod re-validates)
-→ Drizzle → Neon → `revalidatePath` → updated UI. Nothing is stored client-side.
+(`authorize()`) → Drizzle → Supabase Postgres → `revalidatePath` → updated UI.
+The app talks to Postgres server-side only; **RLS is enabled on every table
+with no anon/authenticated policies**, so the public PostgREST API cannot
+touch app data.
 
 **Financial rules:** subscriptions = expected billing (drive MRR/ARR);
-invoices = amounts requested; payments = money actually collected. Dashboard
-metrics are computed from these records in `src/server/queries/metrics.ts` and
-`src/lib/finance/metrics.ts` (unit-tested).
+invoices = amounts requested; payments = money actually collected. Metrics are
+computed in `src/server/queries/metrics.ts` + `src/lib/finance/metrics.ts` (unit-tested).
 
 ## Local setup
 
 ```bash
 npm install
-cp .env.example .env         # then fill values (see below)
-npm run db:migrate           # applies drizzle/ migrations to DATABASE_URL
-npm run db:seed              # optional, dev-only demo data
+cp .env.example .env.local   # then fill values (see below)
+npm run db:migrate           # applies drizzle/ migrations to DATABASE_URL_DIRECT
 npm run dev
 ```
 
-Zero-install local database: set `DATABASE_URL=pglite://.pglite/data` (embedded
-Postgres, dev-only). For Neon, paste the pooled connection string instead.
+Zero-install local data layer: `DATABASE_URL=pglite://.pglite/data` runs an
+embedded Postgres (dev-only). Auth always uses your real Supabase project.
 
 ### Environment variables
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Neon **pooled** connection string (app runtime) |
-| `DATABASE_URL_UNPOOLED` | Neon **direct** connection string (migrations) |
-| `BETTER_AUTH_SECRET` | `openssl rand -base64 32` |
-| `BETTER_AUTH_URL` | Base URL of the app (http://localhost:3000 locally) |
-| `NEXT_PUBLIC_APP_URL` | Same as above for a single deployment |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (Settings → API) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable/anon key — safe for the browser (RLS enforced) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only; admin operations (demo seed). Never expose. |
+| `DATABASE_URL` | Supabase **pooled** connection string (app runtime) |
+| `DATABASE_URL_DIRECT` | Supabase **direct** connection string (migrations; falls back to `DATABASE_URL`) |
+| `NEXT_PUBLIC_APP_URL` | Base URL of the deployment |
 
-Never commit `.env*` files — they are gitignored.
+Never commit `.env*` files with values — they are gitignored.
 
-## Neon
+## Supabase setup
 
-1. Create a Neon project; create a `development` branch off `main` for development.
-2. Put the branch's pooled URL in `DATABASE_URL` and direct URL in `DATABASE_URL_UNPOOLED`.
-3. `npm run db:migrate` applies `drizzle/0000_*.sql` (all tables, enums, indexes).
-4. Schema changes: edit `src/lib/db/schema.ts` → `npm run db:generate` → review SQL → `npm run db:migrate`.
+1. Project: `fclephvgzdrlxpzdnbgy` (or your own). Copy API URL + keys into `.env.local`.
+2. Copy the connection strings (Settings → Database): pooler URI → `DATABASE_URL`,
+   direct URI → `DATABASE_URL_DIRECT`.
+3. `npm run db:migrate` — creates all 19 app tables, links `profiles` to
+   `auth.users`, and enables RLS everywhere.
+4. Auth → Providers: Email enabled. If "Confirm email" is on, sign-up shows a
+   check-your-email notice and `/auth/confirm` completes the flow; disable it
+   for instant sign-in in development.
+5. Optional demo data: `npm run db:seed` (dev-only; needs the service-role key;
+   creates `demo@revdevhqos.dev` / `demo-password-123` with clearly-labeled records).
 
-## Railway deployment
+Schema changes: edit `src/lib/db/schema.ts` → `npm run db:generate` → review SQL → `npm run db:migrate`.
 
-Project **revdevhqOS** / environment **staging** / service **web** already exist
-(domain `web-staging-42c4.up.railway.app`; `BETTER_AUTH_SECRET`,
-`BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL` are set). To go live:
+## Vercel deployment
 
-1. In the Railway dashboard, connect service **web** to
-   `contractorarsenal/revdevhqOS`, branch `build/functional-mvp` (or `main` after merge).
-   Requires granting the Railway GitHub App access to the repo.
-2. Set `DATABASE_URL` and `DATABASE_URL_UNPOOLED` to the Neon staging branch.
-3. Run `npm run db:migrate` against that branch once (locally or a one-off job).
-4. Deploy. Build: `npm run build` · Start: `npm run start` (see `railway.json`).
+1. Import the GitHub repo `contractorarsenal/revdevhqOS` in Vercel (framework: Next.js — zero config).
+2. Set the six environment variables above (Production + Preview).
+3. Set `NEXT_PUBLIC_APP_URL` to the Vercel URL; add the same URL to Supabase
+   Auth → URL Configuration (Site URL + redirect URLs, including `/auth/confirm`).
+4. Deploy. Node 22 is pinned via `package.json` engines and `.nvmrc`.
 
-Do **not** add a Railway Postgres — Neon is the database.
+Run migrations from your machine (`npm run db:migrate` against
+`DATABASE_URL_DIRECT`) — Vercel builds never run DDL.
 
 ## Commands
 
 `dev` · `build` · `start` · `lint` · `typecheck` · `test` ·
 `db:generate` · `db:migrate` · `db:studio` · `db:seed`
 
-`node scripts/e2e-check.mjs` drives the running app in Chrome through the core
-flows (sign-in, client CRUD + persistence, subscription → MRR, invoice + payment,
-lead → opportunity conversion, pipeline drag-and-drop persistence, tasks, sign-out).
+`node scripts/e2e-check.mjs` drives the running app in Chrome end-to-end:
+Supabase sign-in, workspace setup, client/lead/pipeline/billing/task CRUD with
+persistence-after-refresh checks, and sign-out.
 
 ## Current MVP functionality
 
-Working end-to-end (verified): email/password auth with protected routes;
-workspace creation with owner role and per-workspace data isolation; client
-directory/detail with contacts, notes, onboarding checklist, archive; leads with
-convert-to-opportunity and mark-lost; pipeline board with DB-backed stages,
-drag-and-drop persistence, and a transactional closed-won → client + subscriptions
-+ onboarding-task conversion; billing (services, subscriptions with pause/resume/
-cancel, multi-line invoices with open/paid/void, payments that update invoice
-balances); tasks with linking, complete/reopen, delete; activity logging; dashboard
-and reports computed from live records.
+Email/password auth (Supabase) with protected routes and server-side session
+validation; workspace creation with owner role and per-workspace isolation;
+clients (directory, detail, contacts, notes, onboarding checklist, archive);
+leads (CRUD, convert → opportunity, mark lost); pipeline (DB-backed stages,
+drag-and-drop persistence, transactional closed-won conversion); billing
+(services, subscriptions, invoices, payments with balance updates); tasks
+(CRUD, linking, complete/reopen); activity logging; dashboard and reports
+computed from live records.
 
 ## Known limitations
 
-- Single member per workspace in practice (no invitation flow yet; membership/roles are enforced server-side).
+- No team invitation flow yet (roles/membership are enforced server-side).
 - No card processing — payments are recorded, not charged.
 - No file uploads, email sending, or automations.
 - MRR history is derived from subscription start/cancel dates rather than snapshots.
-- Reports cover revenue/MRR basics only.

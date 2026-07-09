@@ -36,7 +36,7 @@ function slugify(name: string): string {
 
 export async function createWorkspace(input: unknown): Promise<ActionResult> {
   try {
-    const session = await requireUser();
+    const user = await requireUser();
     const data = workspaceSchema.parse(input);
     const slug = `${slugify(data.name)}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -47,7 +47,7 @@ export async function createWorkspace(input: unknown): Promise<ActionResult> {
         .returning();
       await tx.insert(workspaceMembers).values({
         workspaceId: ws.id,
-        userId: session.user.id,
+        userId: user.id,
         role: "owner",
       });
       await tx.insert(pipelineStages).values(
@@ -95,8 +95,8 @@ export async function updateWorkspace(input: unknown): Promise<ActionResult> {
 
 export async function setActiveWorkspace(workspaceId: string): Promise<ActionResult> {
   try {
-    const session = await requireUser();
-    await assertMembership(session.user.id, workspaceId);
+    const user = await requireUser();
+    await assertMembership(user.id, workspaceId);
     const cookieStore = await cookies();
     cookieStore.set(ACTIVE_WORKSPACE_COOKIE, workspaceId, { path: "/", httpOnly: true, sameSite: "lax" });
     revalidatePath("/", "layout");

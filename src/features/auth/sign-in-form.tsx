@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth/client";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,13 +17,14 @@ export function SignInForm() {
     setError(null);
     setLoading(true);
     const form = new FormData(e.currentTarget);
-    const { error } = await authClient.signIn.email({
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({
       email: String(form.get("email")),
       password: String(form.get("password")),
     });
     setLoading(false);
     if (error) {
-      setError(error.message ?? "Invalid email or password.");
+      setError(error.message || "Invalid email or password.");
       return;
     }
     router.push("/dashboard");

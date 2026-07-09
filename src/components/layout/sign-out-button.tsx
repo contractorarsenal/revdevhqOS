@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { authClient } from "@/lib/auth/client";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 
 export function SignOutButton() {
@@ -14,7 +14,7 @@ export function SignOutButton() {
       className="size-7 text-muted-foreground"
       title="Sign out"
       onClick={async () => {
-        await authClient.signOut();
+        await createClient().auth.signOut();
         router.push("/sign-in");
         router.refresh();
       }}

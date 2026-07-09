@@ -1,14 +1,18 @@
 /**
  * Development-only demo seed. Never runs in production.
- * Creates one clearly-labeled demo workspace with sample records.
+ * Creates one clearly-labeled demo workspace with sample records, owned by a
+ * demo Supabase Auth user (created via the service-role admin API).
+ *
+ * Requires: DATABASE_URL, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *
  *   npm run db:seed
  *
  * Demo sign-in: demo@revdevhqos.dev / demo-password-123
  */
-import "dotenv/config";
-import { randomUUID } from "node:crypto";
-import { hashPassword } from "better-auth/crypto";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+config({ path: ".env" });
+import { createClient } from "@supabase/supabase-js";
 import * as schema from "../src/lib/db/schema";
 
 if (process.env.NODE_ENV === "production") {
@@ -17,21 +21,31 @@ if (process.env.NODE_ENV === "production") {
 }
 
 const url = process.env.DATABASE_URL;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!url) {
   console.error("DATABASE_URL is required");
   process.exit(1);
 }
+if (url.startsWith("pglite://")) {
+  console.error(
+    "Seeding requires the real Supabase database (auth users live in Supabase).\n" +
+      "Point DATABASE_URL at your Supabase project and set SUPABASE_SERVICE_ROLE_KEY."
+  );
+  process.exit(1);
+}
+if (!supabaseUrl || !serviceKey) {
+  console.error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to create the demo auth user.");
+  process.exit(1);
+}
 
 async function getDb() {
-  if (url!.startsWith("pglite://")) {
-    const { PGlite } = await import("@electric-sql/pglite");
-    const { drizzle } = await import("drizzle-orm/pglite");
-    const client = new PGlite(url!.replace("pglite://", ""));
-    return { db: drizzle(client, { schema }), close: () => client.close() };
-  }
   const { Pool } = await import("pg");
   const { drizzle } = await import("drizzle-orm/node-postgres");
-  const pool = new Pool({ connectionString: url });
+  const pool = new Pool({
+    connectionString: url,
+    ssl: url!.includes("supabase.co") || url!.includes("supabase.com") ? { rejectUnauthorized: false } : undefined,
+  });
   return { db: drizzle(pool, { schema }), close: () => pool.end() };
 }
 
@@ -43,26 +57,37 @@ const day = (offset: number) => {
 const dateStr = (offset: number) => day(offset).toISOString().slice(0, 10);
 
 async function main() {
+  const admin = createClient(supabaseUrl!, serviceKey!, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
   const { db, close } = await getDb();
   const { eq } = await import("drizzle-orm");
 
-  const existing = await db.select().from(schema.users).where(eq(schema.users.email, "demo@revdevhqos.dev"));
+  const existing = await db.select().from(schema.profiles).where(eq(schema.profiles.email, "demo@revdevhqos.dev"));
   if (existing.length > 0) {
-    console.log("Demo user already exists — skipping seed. Delete the demo workspace to reseed.");
+    console.log("Demo profile already exists — skipping seed. Delete the demo workspace/user to reseed.");
     await close();
     return;
   }
 
-  console.log("Seeding demo data…");
-  const userId = randomUUID();
+  console.log("Creating demo auth user…");
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email: "demo@revdevhqos.dev",
+    password: "demo-password-123",
+    email_confirm: true,
+    user_metadata: { name: "Demo Owner" },
+  });
+  if (error || !created.user) {
+    console.error("Could not create demo auth user:", error?.message);
+    await close();
+    process.exit(1);
+  }
+  const userId = created.user.id;
   const now = new Date();
-  await db.insert(schema.users).values({
-    id: userId, name: "Demo Owner", email: "demo@revdevhqos.dev", emailVerified: true,
-  });
-  await db.insert(schema.accounts).values({
-    id: randomUUID(), accountId: userId, providerId: "credential", userId,
-    password: await hashPassword("demo-password-123"),
-  });
+
+  console.log("Seeding demo data…");
+  await db.insert(schema.profiles).values({ id: userId, name: "Demo Owner", email: "demo@revdevhqos.dev" });
 
   const [ws] = await db.insert(schema.workspaces).values({
     name: "Demo Agency (Seed Data)", slug: `demo-agency-${Math.random().toString(36).slice(2, 7)}`,
@@ -128,7 +153,6 @@ async function main() {
     }
   }
 
-  // onboarding for Ironwood
   await db.insert(schema.clientOnboarding).values(
     stepNames.map((name, i) => ({
       workspaceId: ws.id, clientId: clients[4].id, templateId: template.id,
@@ -136,33 +160,23 @@ async function main() {
     }))
   );
 
-  // invoices + payments
   const [invPaid] = await db.insert(schema.invoices).values({
     workspaceId: ws.id, clientId: clients[0].id, number: "INV-1001 (demo)", status: "paid",
     issueDate: dateStr(-8), dueDate: dateStr(-1), total: "4200", amountPaid: "4200",
   }).returning();
-  const [] = await db.insert(schema.invoices).values({
-    workspaceId: ws.id, clientId: clients[2].id, number: "INV-1002 (demo)", status: "open",
-    issueDate: dateStr(-25), dueDate: dateStr(-12), total: "2400", amountPaid: "0",
-  }).returning();
   await db.insert(schema.invoices).values([
+    { workspaceId: ws.id, clientId: clients[2].id, number: "INV-1002 (demo)", status: "open", issueDate: dateStr(-25), dueDate: dateStr(-12), total: "2400", amountPaid: "0" },
     { workspaceId: ws.id, clientId: clients[1].id, number: "INV-1003 (demo)", status: "open", issueDate: dateStr(-3), dueDate: dateStr(12), total: "3000", amountPaid: "0" },
     { workspaceId: ws.id, clientId: clients[3].id, number: "INV-1004 (demo)", status: "draft", total: "2500", amountPaid: "0" },
   ]);
-  for (const inv of [invPaid]) {
-    await db.insert(schema.payments).values({
-      workspaceId: ws.id, clientId: inv.clientId, invoiceId: inv.id,
-      amount: "4200", status: "succeeded", method: "ACH", paidAt: day(-1),
-    });
-  }
   await db.insert(schema.payments).values([
+    { workspaceId: ws.id, clientId: invPaid.clientId, invoiceId: invPaid.id, amount: "4200", status: "succeeded", method: "ACH", paidAt: day(-1) },
     { workspaceId: ws.id, clientId: clients[1].id, amount: "3000", status: "succeeded", method: "Card", paidAt: now },
     { workspaceId: ws.id, clientId: clients[3].id, amount: "2500", status: "succeeded", method: "ACH", paidAt: day(-40) },
     { workspaceId: ws.id, clientId: clients[0].id, amount: "4200", status: "succeeded", method: "ACH", paidAt: day(-35) },
     { workspaceId: ws.id, clientId: clients[2].id, amount: "2000", status: "failed", method: "Card", reference: "card declined", paidAt: day(-5) },
   ]);
 
-  // leads
   const leadDefs = [
     ["Peak Valley Landscaping (demo)", "Nora Diaz", "new", "1600", null, "Referral"],
     ["Oak & Iron Custom Homes (demo)", "Ted Alvarez", "contacted", "4000", "12000", "Google Ads"],
@@ -181,7 +195,6 @@ async function main() {
     leads.push(lead);
   }
 
-  // opportunities
   const oppDefs: [string, number, string, string][] = [
     ["Oak & Iron Custom Homes (demo)", 3, "60000", "4000"],
     ["Blue Sky Painting (demo)", 2, "14400", "1200"],
@@ -198,7 +211,6 @@ async function main() {
     });
   }
 
-  // tasks
   await db.insert(schema.tasks).values([
     { workspaceId: ws.id, title: "Chase overdue invoice INV-1002 (demo)", priority: "urgent", assigneeId: userId, clientId: clients[2].id, dueDate: day(-2) },
     { workspaceId: ws.id, title: "Publish monthly report — Summit Roofing (demo)", priority: "medium", assigneeId: userId, clientId: clients[0].id, dueDate: day(0) },

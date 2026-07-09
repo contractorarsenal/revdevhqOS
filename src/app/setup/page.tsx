@@ -7,11 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { WorkspaceForm } from "@/features/auth/workspace-form";
 
 export default async function SetupPage() {
-  const session = await requireUser();
+  const user = await requireUser();
   const memberships = await db
     .select({ id: workspaceMembers.id })
     .from(workspaceMembers)
-    .where(eq(workspaceMembers.userId, session.user.id))
+    .where(eq(workspaceMembers.userId, user.id))
     .limit(1);
   if (memberships.length > 0) redirect("/dashboard");
 
