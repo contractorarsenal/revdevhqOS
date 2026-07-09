@@ -42,6 +42,8 @@ export function InvoiceFormDialog({
         clientId: fixedClientId ?? clients[0]?.id ?? "",
         number: suggestedNumber,
         status: "open",
+        billingFrequency: "one_time",
+        billingMonth: new Date().toISOString().slice(0, 7),
         issueDate: new Date().toISOString().slice(0, 10),
         dueDate: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
         items: [{ description: "", quantity: 1, unitPrice: "" }],
@@ -87,6 +89,17 @@ export function InvoiceFormDialog({
                 <option value="open">Open (issued)</option>
                 <option value="draft">Draft</option>
               </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Billing type</Label>
+              <select {...form.register("billingFrequency")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
+                <option value="one_time">One-time</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Billing month</Label>
+              <Input type="month" {...form.register("billingMonth")} />
             </div>
             <div className="space-y-1">
               <Label>Issue date</Label>

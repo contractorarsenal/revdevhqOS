@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatMoney, invoiceBalance, isPastDue } from "@/lib/finance/metrics";
+import { formatMoney, invoiceBalance, isPastDue, toAmount } from "@/lib/finance/metrics";
 import { setSubscriptionStatus, setInvoiceStatus, markInvoicePaid, archiveService } from "@/server/actions/billing";
 import { ServiceFormDialog } from "./service-form-dialog";
 import { SubscriptionFormDialog } from "./subscription-form-dialog";
@@ -22,6 +22,52 @@ import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { PaymentFormDialog } from "./payment-form-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+function monthLabel(billingMonth: string | null): string {
+  if (!billingMonth) return "—";
+  return new Date(billingMonth + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function TypeBadge({ value }: { value: string }) {
+  return value === "monthly" ? (
+    <StatusBadge status="monthly" tone="indigo" />
+  ) : (
+    <StatusBadge status="one-time" tone="neutral" />
+  );
+}
+
+function BillingFilters({
+  type, onType, month, onMonth, months, total, totalLabel,
+}: {
+  type: string; onType: (v: string) => void;
+  month: string; onMonth: (v: string) => void;
+  months: string[]; total: number; totalLabel: string;
+}) {
+  return (
+    <span className="ml-auto flex flex-wrap items-center gap-2">
+      <span className="flex rounded-md bg-muted p-0.5">
+        {[["all", "All"], ["monthly", "Monthly"], ["one_time", "One-time"]].map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => onType(v)}
+            className={`rounded px-2.5 py-1 text-xs font-semibold ${type === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </span>
+      <select value={month} onChange={(e) => onMonth(e.target.value)} className="h-8 rounded-md border border-input bg-transparent px-2 text-xs">
+        <option value="all">All months</option>
+        {months.map((m) => (
+          <option key={m} value={m}>{monthLabel(m)}</option>
+        ))}
+      </select>
+      <span className="tabular-nums text-xs text-muted-foreground">
+        {totalLabel}: <span className="font-semibold text-foreground">{formatMoney(total)}</span>
+      </span>
+    </span>
+  );
+}
+
 type Metrics = {
   mrr: number; arr: number; collectedThisMonth: number; collectedToday: number;
   outstanding: number; pastDue: number;
@@ -44,6 +90,37 @@ export function BillingView({
   const [paymentForm, setPaymentForm] = useState(Boolean(openNew) && tab === "payments");
 
   const suggestedNumber = `INV-${String(1000 + invoices.length + 1)}`;
+  const [payType, setPayType] = useState("all");
+  const [payMonth, setPayMonth] = useState("all");
+  const [invType, setInvType] = useState("all");
+  const [invMonth, setInvMonth] = useState("all");
+
+  const payMonths = useMemo(
+    () => [...new Set(payments.map((p) => p.billingMonth).filter(Boolean))].sort().reverse() as string[],
+    [payments]
+  );
+  const invMonths = useMemo(
+    () => [...new Set(invoices.map((i) => i.billingMonth).filter(Boolean))].sort().reverse() as string[],
+    [invoices]
+  );
+  const filteredPayments = useMemo(
+    () => payments.filter((p) =>
+      (payType === "all" || p.paymentType === payType) && (payMonth === "all" || p.billingMonth === payMonth)
+    ),
+    [payments, payType, payMonth]
+  );
+  const filteredInvoices = useMemo(
+    () => invoices.filter((i) =>
+      (invType === "all" || i.billingFrequency === invType) && (invMonth === "all" || i.billingMonth === invMonth)
+    ),
+    [invoices, invType, invMonth]
+  );
+  const filteredCollected = filteredPayments
+    .filter((p) => p.status === "succeeded")
+    .reduce((sum, p) => sum + toAmount(p.amount), 0);
+  const filteredInvoiced = filteredInvoices
+    .filter((i) => i.status !== "void")
+    .reduce((sum, i) => sum + toAmount(i.total), 0);
 
   async function run(promise: Promise<{ ok: boolean; error?: string }>, success: string) {
     const result = await promise;
@@ -98,6 +175,8 @@ export function BillingView({
     { accessorKey: "clientName", header: "Client" },
     { accessorKey: "total", header: sortableHeader("Total"), cell: ({ row }) => <FinancialAmount value={row.original.total} /> },
     { id: "balance", header: "Balance", cell: ({ row }) => <FinancialAmount value={invoiceBalance(row.original)} className={invoiceBalance(row.original) > 0 ? "" : "text-muted-foreground"} /> },
+    { accessorKey: "billingFrequency", header: "Type", cell: ({ row }) => <TypeBadge value={row.original.billingFrequency} /> },
+    { accessorKey: "billingMonth", header: sortableHeader("Billing month"), cell: ({ row }) => monthLabel(row.original.billingMonth) },
     {
       id: "status", header: "Status",
       cell: ({ row }) => <StatusBadge status={isPastDue(row.original) ? "past_due" : row.original.status} />,
@@ -143,6 +222,8 @@ export function BillingView({
   const payCols: ColumnDef<any>[] = [
     { accessorKey: "clientName", header: "Client", cell: ({ row }) => row.original.clientName ?? <span className="text-muted-foreground">—</span> },
     { accessorKey: "amount", header: sortableHeader("Amount"), cell: ({ row }) => <FinancialAmount value={row.original.amount} className="text-emerald-700 dark:text-emerald-400" /> },
+    { accessorKey: "paymentType", header: "Type", cell: ({ row }) => <TypeBadge value={row.original.paymentType} /> },
+    { accessorKey: "billingMonth", header: sortableHeader("Billing month"), cell: ({ row }) => monthLabel(row.original.billingMonth) },
     { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.status} /> },
     { accessorKey: "method", header: "Method", cell: ({ row }) => row.original.method ?? "—" },
     { accessorKey: "reference", header: "Reference", cell: ({ row }) => row.original.reference ?? "—" },
@@ -219,8 +300,13 @@ export function BillingView({
             <EmptyState icon={FileText} title="No invoices yet" description="Invoices are amounts requested from clients."
               action={<Button size="sm" onClick={() => setInvoiceForm(true)}><Plus className="size-3.5" /> Create invoice</Button>} />
           ) : (
-            <DataTable columns={invCols} data={invoices} searchPlaceholder="Search invoices…"
-              toolbar={<Button size="sm" variant="outline" className="ml-auto gap-1" onClick={() => setInvoiceForm(true)}><Plus className="size-3.5" /> Create invoice</Button>} />
+            <DataTable columns={invCols} data={filteredInvoices} searchPlaceholder="Search invoices…"
+              toolbar={
+                <>
+                  <BillingFilters type={invType} onType={setInvType} month={invMonth} onMonth={setInvMonth} months={invMonths} total={filteredInvoiced} totalLabel="Invoiced" />
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => setInvoiceForm(true)}><Plus className="size-3.5" /> Create invoice</Button>
+                </>
+              } />
           )}
         </TabsContent>
 
@@ -229,8 +315,13 @@ export function BillingView({
             <EmptyState icon={DollarSign} title="No payments recorded" description="Payments are money actually collected — they power the revenue metrics."
               action={<Button size="sm" onClick={() => setPaymentForm(true)}><Plus className="size-3.5" /> Record payment</Button>} />
           ) : (
-            <DataTable columns={payCols} data={payments} searchPlaceholder="Search payments…"
-              toolbar={<Button size="sm" variant="outline" className="ml-auto gap-1" onClick={() => setPaymentForm(true)}><Plus className="size-3.5" /> Record payment</Button>} />
+            <DataTable columns={payCols} data={filteredPayments} searchPlaceholder="Search payments…"
+              toolbar={
+                <>
+                  <BillingFilters type={payType} onType={setPayType} month={payMonth} onMonth={setPayMonth} months={payMonths} total={filteredCollected} totalLabel="Collected" />
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => setPaymentForm(true)}><Plus className="size-3.5" /> Record payment</Button>
+                </>
+              } />
           )}
         </TabsContent>
 

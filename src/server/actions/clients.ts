@@ -194,3 +194,25 @@ export async function toggleOnboardingStep(stepId: string, completed: boolean): 
     return actionError(err);
   }
 }
+
+/** Reverses a removal — puts the client back in the active list. */
+export async function restoreClient(clientId: string): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    await ownedClient(ctx.workspace.id, clientId);
+    await db
+      .update(clients)
+      .set({ status: "active", archivedAt: null })
+      .where(and(eq(clients.id, clientId), eq(clients.workspaceId, ctx.workspace.id)));
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "client.updated", entityType: "client", entityId: clientId, clientId,
+      metadata: { restored: true },
+    });
+    revalidatePath("/clients");
+    revalidatePath(`/clients/${clientId}`);
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}

@@ -26,10 +26,13 @@ export function TasksView({
   const [formOpen, setFormOpen] = useState(openNew);
   const [editing, setEditing] = useState<TaskRow | null>(null);
 
-  const visible = useMemo(
-    () => (scope === "mine" ? tasks.filter((t) => t.assigneeId === currentUserId || !t.assigneeId) : tasks),
-    [tasks, scope, currentUserId]
-  );
+  // Optimistic: the checkbox flips instantly; server failure reverts it.
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, "completed" | "todo">>({});
+
+  const visible = useMemo(() => {
+    const scoped = scope === "mine" ? tasks.filter((t) => t.assigneeId === currentUserId || !t.assigneeId) : tasks;
+    return scoped.map((t) => (statusOverrides[t.id] ? { ...t, status: statusOverrides[t.id] } : t));
+  }, [tasks, scope, currentUserId, statusOverrides]);
 
   const groups: Group[] = useMemo(() => {
     const open = visible.filter((t) => ["todo", "in_progress"].includes(t.status));
@@ -48,9 +51,14 @@ export function TasksView({
   }, [visible]);
 
   async function toggle(task: TaskRow, completed: boolean) {
+    setStatusOverrides((prev) => ({ ...prev, [task.id]: completed ? "completed" : "todo" }));
     const result = await setTaskCompletion(task.id, completed);
-    if (!result.ok) toast.error(result.error);
-    else router.refresh();
+    if (!result.ok) {
+      setStatusOverrides((prev) => ({ ...prev, [task.id]: completed ? "todo" : "completed" }));
+      toast.error(result.error);
+      return;
+    }
+    router.refresh();
   }
 
   function toEdit(task: TaskRow) {

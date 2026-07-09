@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutGrid, Users, Target, Kanban, CreditCard, CheckSquare, BarChart3,
@@ -24,6 +24,12 @@ const SECONDARY = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+function NavPending() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return <span className="ml-auto size-1.5 animate-pulse rounded-full bg-primary" aria-label="Loading" />;
+}
+
 function NavItem({ href, label, icon: Icon }: (typeof PRIMARY)[number]) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(href + "/");
@@ -38,6 +44,7 @@ function NavItem({ href, label, icon: Icon }: (typeof PRIMARY)[number]) {
     >
       <Icon className={cn("size-4", active && "text-primary")} />
       {label}
+      <NavPending />
     </Link>
   );
 }

@@ -1,4 +1,5 @@
 import { requireWorkspace } from "@/lib/auth/session";
+import { timed } from "@/lib/dev/timing";
 import { listServices, listSubscriptions, listInvoices, listPayments } from "@/server/queries/billing";
 import { listClients } from "@/server/queries/clients";
 import { getDashboardMetrics } from "@/server/queries/metrics";
@@ -10,14 +11,14 @@ export default async function BillingPage({
   searchParams: Promise<{ tab?: string; new?: string }>;
 }) {
   const ctx = await requireWorkspace();
-  const [services, subscriptions, invoices, payments, clients, metrics] = await Promise.all([
+  const [services, subscriptions, invoices, payments, clients, metrics] = await timed("billing queries", () => Promise.all([
     listServices(ctx.workspace.id, true),
     listSubscriptions(ctx.workspace.id),
     listInvoices(ctx.workspace.id),
     listPayments(ctx.workspace.id),
     listClients(ctx.workspace.id),
     getDashboardMetrics(ctx.workspace.id, ctx.workspace.timezone),
-  ]);
+  ]));
   const params = await searchParams;
   return (
     <BillingView

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth/session";
+import { timed } from "@/lib/dev/timing";
 import {
   getDashboardMetrics, getMrrTrend, getCollectedByMonth, getRecentActivity, getAttentionQueue,
 } from "@/server/queries/metrics";
@@ -23,14 +24,14 @@ function greeting() {
 export default async function DashboardPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
-  const [metrics, mrrTrend, collected, activity, attention, payments] = await Promise.all([
+  const [metrics, mrrTrend, collected, activity, attention, payments] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId),
     getRecentActivity(wsId),
     getAttentionQueue(wsId),
     listPayments(wsId),
-  ]);
+  ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
   const attentionCount = attention.overdueInvoices.length + attention.overdueTasks.length + attention.renewals.length;

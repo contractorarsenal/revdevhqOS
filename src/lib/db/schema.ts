@@ -74,6 +74,7 @@ export const clients = pgTable("clients", {
 }, (t) => [
   index("clients_workspace_idx").on(t.workspaceId),
   index("clients_workspace_status_idx").on(t.workspaceId, t.status),
+  index("clients_workspace_created_idx").on(t.workspaceId, t.createdAt),
 ]);
 
 export const contacts = pgTable("contacts", {
@@ -188,12 +189,16 @@ export const invoices = pgTable("invoices", {
   dueDate: date("due_date"),
   total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
   amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }).notNull().default("0"),
+  billingFrequency: billingFrequency("billing_frequency").notNull().default("one_time"),
+  billingMonth: date("billing_month"),
   voidedAt: timestamp("voided_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
   uniqueIndex("invoices_workspace_number_unique").on(t.workspaceId, t.number),
   index("invoices_workspace_status_idx").on(t.workspaceId, t.status),
+  index("invoices_workspace_issue_idx").on(t.workspaceId, t.issueDate),
+  index("invoices_workspace_billing_month_idx").on(t.workspaceId, t.billingMonth),
   index("invoices_client_idx").on(t.clientId),
 ]);
 
@@ -215,12 +220,15 @@ export const payments = pgTable("payments", {
   invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   status: paymentStatus("status").notNull().default("succeeded"),
+  paymentType: billingFrequency("payment_type").notNull().default("one_time"),
+  billingMonth: date("billing_month"),
   method: text("method"),
   reference: text("reference"),
   paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
   createdAt: createdAt(),
 }, (t) => [
   index("payments_workspace_paid_idx").on(t.workspaceId, t.paidAt),
+  index("payments_workspace_billing_month_idx").on(t.workspaceId, t.billingMonth),
   index("payments_invoice_idx").on(t.invoiceId),
 ]);
 
@@ -242,6 +250,7 @@ export const tasks = pgTable("tasks", {
   updatedAt: updatedAt(),
 }, (t) => [
   index("tasks_workspace_status_idx").on(t.workspaceId, t.status),
+  index("tasks_workspace_due_idx").on(t.workspaceId, t.dueDate),
   index("tasks_assignee_idx").on(t.assigneeId),
   index("tasks_client_idx").on(t.clientId),
 ]);

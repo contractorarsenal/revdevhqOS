@@ -4,10 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Users, Plus, Archive, ExternalLink } from "lucide-react";
+import { Users, Plus, Trash2, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { type ClientRow } from "@/server/queries/clients";
-import { archiveClient } from "@/server/actions/clients";
+import { archiveClient, restoreClient } from "@/server/actions/clients";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -31,11 +31,30 @@ export function ClientsView({
   const [tab, setTab] = useState<(typeof TABS)[number]>("all");
   const [formOpen, setFormOpen] = useState(openNew);
   const [preview, setPreview] = useState<ClientRow | null>(null);
+  // Optimistic removal: rows disappear the moment removal is confirmed and
+  // reappear only if the server rejects it.
+  const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(new Set());
 
-  const filtered = useMemo(
-    () => (tab === "all" ? clients.filter((c) => c.status !== "archived") : clients.filter((c) => c.status === tab)),
-    [clients, tab]
-  );
+  const filtered = useMemo(() => {
+    const visible = clients.filter((c) => !removedIds.has(c.id));
+    return tab === "all" ? visible.filter((c) => c.status !== "archived") : visible.filter((c) => c.status === tab);
+  }, [clients, tab, removedIds]);
+
+  async function removeClient(client: ClientRow) {
+    setRemovedIds((prev) => new Set([...prev, client.id]));
+    const result = await archiveClient(client.id);
+    if (!result.ok) {
+      setRemovedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(client.id);
+        return next;
+      });
+      toast.error(result.error ?? "Could not remove the client.");
+      return;
+    }
+    toast.success("Client removed.");
+    router.refresh();
+  }
   const totalMrr = clients.reduce((sum, c) => sum + c.mrr, 0);
   const activeCount = clients.filter((c) => ["active", "onboarding", "past_due"].includes(c.status)).length;
   const pastDueClients = clients.filter((c) => c.pastDueBalance > 0).length;
@@ -105,26 +124,35 @@ export function ClientsView({
           <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
             <Link href={`/clients/${row.original.id}`}>Open</Link>
           </Button>
-          {row.original.status !== "archived" && (
+          {row.original.status !== "archived" ? (
             <ConfirmationDialog
               trigger={
-                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Archive">
-                  <Archive className="size-3.5" />
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Remove client">
+                  <Trash2 className="size-3.5" />
                 </Button>
               }
-              title="Archive this client?"
-              description={`${row.original.name} will be moved to Archived. Its billing history is kept.`}
-              confirmLabel="Archive"
+              title="Remove this client?"
+              description={`Are you sure you want to remove ${row.original.name}? This will remove them from your active client list. Invoices, payments, and tasks are kept, and the client can be restored from the Archived tab.`}
+              confirmLabel="Remove client"
               destructive
-              onConfirm={async () => {
-                const result = await archiveClient(row.original.id);
+              onConfirm={() => removeClient(row.original)}
+            />
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={async () => {
+                const result = await restoreClient(row.original.id);
                 if (!result.ok) toast.error(result.error);
                 else {
-                  toast.success("Client archived");
+                  toast.success("Client restored");
                   router.refresh();
                 }
               }}
-            />
+            >
+              <RotateCcw className="size-3.5" /> Restore
+            </Button>
           )}
         </span>
       ),

@@ -87,15 +87,16 @@ export async function getCollectedByMonth(workspaceId: string) {
   start.setMonth(start.getMonth() - 11);
   start.setDate(1);
   start.setHours(0, 0, 0, 0);
+  const bucket = sql`date_trunc('month', coalesce(${payments.billingMonth}::timestamp, ${payments.paidAt}))`;
   const rows = await db
     .select({
-      month: sql<string>`to_char(date_trunc('month', ${payments.paidAt}), 'YYYY-MM')`,
+      month: sql<string>`to_char(${bucket}, 'YYYY-MM')`,
       total: sql<string>`sum(${payments.amount})`,
     })
     .from(payments)
     .where(and(eq(payments.workspaceId, workspaceId), eq(payments.status, "succeeded"), gte(payments.paidAt, start)))
-    .groupBy(sql`date_trunc('month', ${payments.paidAt})`)
-    .orderBy(sql`date_trunc('month', ${payments.paidAt})`);
+    .groupBy(bucket)
+    .orderBy(bucket);
 
   const map = new Map(rows.map((r) => [r.month, Number(r.total)]));
   const series: { month: string; collected: number }[] = [];

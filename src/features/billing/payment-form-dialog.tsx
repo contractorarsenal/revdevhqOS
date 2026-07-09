@@ -48,6 +48,8 @@ export function PaymentFormDialog({
         invoiceId: "",
         amount: "",
         status: "succeeded",
+        paymentType: "one_time",
+        billingMonth: new Date().toISOString().slice(0, 7),
         method: "",
         reference: "",
         paidAt: new Date().toISOString().slice(0, 10),
@@ -116,6 +118,17 @@ export function PaymentFormDialog({
             <div className="space-y-1">
               <Label>Date *</Label>
               <Input type="date" {...form.register("paidAt")} />
+            </div>
+            <div className="space-y-1">
+              <Label>Payment type</Label>
+              <select {...form.register("paymentType")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
+                <option value="one_time">One-time</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Billing month</Label>
+              <Input type="month" {...form.register("billingMonth")} />
             </div>
             <div className="space-y-1">
               <Label>Method</Label>
