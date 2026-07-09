@@ -108,10 +108,11 @@ In **Supabase → Authentication → URL Configuration** set:
   - `http://localhost:3000/**`
   - `https://YOUR-VERCEL-DOMAIN.vercel.app/**`
 
-If **Confirm email** (Authentication → Providers → Email) is enabled,
-self-serve sign-ups must confirm via email before signing in (`/auth/confirm`
-handles the link). The bootstrap admin is created pre-confirmed and can sign
-in immediately either way.
+**Email confirmation**: the sign-up flow adapts to the project setting
+automatically. If **Confirm email** (Authentication → Providers → Email) is ON,
+sign-ups get a confirmation link (`/auth/confirm` handles it) before they can
+sign in; turn it OFF for instant sign-ins. The bootstrap admin is always
+created pre-confirmed and can sign in immediately either way.
 
 ## Vercel deployment
 
