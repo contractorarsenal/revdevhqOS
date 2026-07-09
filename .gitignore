@@ -48,3 +48,6 @@ next-env.d.ts
 .env*.local
 *.log
 .pglite/
+
+# template with variable names only — no secret values
+!.env.example
