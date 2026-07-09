@@ -165,6 +165,12 @@ export async function createInvoice(input: unknown): Promise<ActionResult<{ id: 
           clientId: data.clientId,
           number: data.number,
           status: data.status,
+          billingFrequency: data.billingFrequency,
+          billingMonth: data.billingMonth
+            ? `${data.billingMonth}-01`
+            : data.issueDate
+              ? `${data.issueDate.slice(0, 7)}-01`
+              : `${new Date().toISOString().slice(0, 7)}-01`,
           issueDate: data.issueDate ?? null,
           dueDate: data.dueDate ?? null,
           total: String(total),
@@ -289,6 +295,8 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
         invoiceId: data.invoiceId ?? null,
         amount: String(data.amount),
         status: data.status,
+        paymentType: data.paymentType,
+        billingMonth: data.billingMonth ? `${data.billingMonth}-01` : `${data.paidAt.slice(0, 7)}-01`,
         method: data.method ?? null,
         reference: data.reference ?? null,
         paidAt: new Date(data.paidAt),

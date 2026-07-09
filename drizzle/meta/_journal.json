@@ -15,6 +15,20 @@
       "when": 1783567384312,
       "tag": "0001_supabase_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783584999342,
+      "tag": "0002_billing_month_and_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783584999793,
+      "tag": "0003_billing_backfill",
+      "breakpoints": true
     }
   ]
 }

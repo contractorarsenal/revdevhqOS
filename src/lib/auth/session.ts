@@ -49,12 +49,24 @@ export const requireUser = cache(async (): Promise<AppUser> => {
     "Member";
   const email = user.email ?? "";
 
-  await guardInfra(() =>
-    db
-      .insert(profiles)
-      .values({ id: user.id, name, email })
-      .onConflictDoUpdate({ target: profiles.id, set: { email } })
-  );
+  // Read-first: a SELECT on every request is far cheaper than an upsert
+  // write. The insert only happens on the user's first request (or if the
+  // auth email changed).
+  await guardInfra(async () => {
+    const [existing] = await db
+      .select({ id: profiles.id, email: profiles.email })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1);
+    if (!existing) {
+      await db
+        .insert(profiles)
+        .values({ id: user.id, name, email })
+        .onConflictDoNothing({ target: profiles.id });
+    } else if (existing.email !== email) {
+      await db.update(profiles).set({ email }).where(eq(profiles.id, user.id));
+    }
+  });
 
   return { id: user.id, name, email };
 });

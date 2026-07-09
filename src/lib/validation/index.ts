@@ -26,6 +26,12 @@ const optionalDate = z
   .nullable()
   .optional();
 
+const monthField = z
+  .union([z.literal(""), z.string().regex(/^\d{4}-\d{2}$/, "Use the month picker")])
+  .transform((v) => (v === "" ? null : v))
+  .nullable()
+  .optional();
+
 export const workspaceSchema = z.object({
   name: z.string().trim().min(2, "Workspace name is required").max(80),
   timezone: z.string().trim().min(1).max(64).default("UTC"),
@@ -114,6 +120,8 @@ export const invoiceSchema = z.object({
   clientId: z.string().uuid(),
   number: z.string().trim().min(1, "Invoice number is required").max(40),
   status: z.enum(["draft", "open"]).default("draft"),
+  billingFrequency: z.enum(["one_time", "monthly"]).default("one_time"),
+  billingMonth: monthField,
   issueDate: optionalDate,
   dueDate: optionalDate,
   items: z.array(invoiceItemSchema).min(1, "Add at least one line item"),
@@ -124,6 +132,8 @@ export const paymentSchema = z.object({
   invoiceId: uuidOrNull,
   amount: z.coerce.number().positive("Amount must be greater than zero").max(999_999_999),
   status: z.enum(["pending", "succeeded", "failed", "refunded"]).default("succeeded"),
+  paymentType: z.enum(["one_time", "monthly"]).default("one_time"),
+  billingMonth: monthField,
   method: optionalTrimmed,
   reference: optionalTrimmed,
   paidAt: z.string().min(1, "Payment date is required"),
