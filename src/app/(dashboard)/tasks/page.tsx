@@ -1,0 +1,36 @@
+import { requireWorkspace } from "@/lib/auth/session";
+import { listTasks } from "@/server/queries/tasks";
+import { listMembers } from "@/server/queries/members";
+import { listClients } from "@/server/queries/clients";
+import { listLeads } from "@/server/queries/leads";
+import { listPipeline } from "@/server/queries/pipeline";
+import { TasksView } from "@/features/tasks/tasks-view";
+
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ new?: string }>;
+}) {
+  const ctx = await requireWorkspace();
+  const [tasks, members, clients, leads, pipeline] = await Promise.all([
+    listTasks(ctx.workspace.id),
+    listMembers(ctx.workspace.id),
+    listClients(ctx.workspace.id),
+    listLeads(ctx.workspace.id),
+    listPipeline(ctx.workspace.id),
+  ]);
+  const params = await searchParams;
+  return (
+    <TasksView
+      tasks={tasks}
+      currentUserId={ctx.user.id}
+      options={{
+        members,
+        clients: clients.map((c) => ({ id: c.id, name: c.name })),
+        leads: leads.map((l) => ({ id: l.id, company: l.company })),
+        opportunities: pipeline.flatMap((s) => s.opportunities.map((o) => ({ id: o.id, name: o.name }))),
+      }}
+      openNew={params.new === "1"}
+    />
+  );
+}

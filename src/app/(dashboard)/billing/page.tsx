@@ -1,0 +1,34 @@
+import { requireWorkspace } from "@/lib/auth/session";
+import { listServices, listSubscriptions, listInvoices, listPayments } from "@/server/queries/billing";
+import { listClients } from "@/server/queries/clients";
+import { getDashboardMetrics } from "@/server/queries/metrics";
+import { BillingView } from "@/features/billing/billing-view";
+
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; new?: string }>;
+}) {
+  const ctx = await requireWorkspace();
+  const [services, subscriptions, invoices, payments, clients, metrics] = await Promise.all([
+    listServices(ctx.workspace.id, true),
+    listSubscriptions(ctx.workspace.id),
+    listInvoices(ctx.workspace.id),
+    listPayments(ctx.workspace.id),
+    listClients(ctx.workspace.id),
+    getDashboardMetrics(ctx.workspace.id, ctx.workspace.timezone),
+  ]);
+  const params = await searchParams;
+  return (
+    <BillingView
+      services={services}
+      subscriptions={subscriptions}
+      invoices={invoices}
+      payments={payments}
+      clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+      metrics={metrics}
+      initialTab={params.tab}
+      openNew={params.new === "1"}
+    />
+  );
+}
