@@ -10,6 +10,25 @@ import type { WorkspaceRole } from "@/lib/permissions";
 
 export const ACTIVE_WORKSPACE_COOKIE = "rdhq-active-workspace";
 
+/**
+ * Infrastructure guard: when the app database is unreachable or not yet
+ * migrated (fresh deployment), redirect to a controlled setup page instead
+ * of crashing the server component. In development the original error is
+ * rethrown so the real cause is visible.
+ */
+async function guardInfra<T>(operation: () => Promise<T>): Promise<T> {
+  let result: { ok: true; value: T } | { ok: false; error: unknown };
+  try {
+    result = { ok: true, value: await operation() };
+  } catch (error) {
+    result = { ok: false, error };
+  }
+  if (result.ok) return result.value;
+  console.error("[revdevhqOS] database unavailable:", result.error);
+  if (process.env.NODE_ENV !== "production") throw result.error;
+  redirect("/setup-required");
+}
+
 export type AppUser = { id: string; name: string; email: string };
 
 /**
@@ -30,10 +49,12 @@ export const requireUser = cache(async (): Promise<AppUser> => {
     "Member";
   const email = user.email ?? "";
 
-  await db
-    .insert(profiles)
-    .values({ id: user.id, name, email })
-    .onConflictDoUpdate({ target: profiles.id, set: { email } });
+  await guardInfra(() =>
+    db
+      .insert(profiles)
+      .values({ id: user.id, name, email })
+      .onConflictDoUpdate({ target: profiles.id, set: { email } })
+  );
 
   return { id: user.id, name, email };
 });
@@ -54,11 +75,13 @@ export const requireWorkspace = cache(async (): Promise<WorkspaceContext> => {
   const cookieStore = await cookies();
   const preferred = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value;
 
-  const memberships = await db
-    .select({ member: workspaceMembers, workspace: workspaces })
-    .from(workspaceMembers)
-    .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
-    .where(eq(workspaceMembers.userId, user.id));
+  const memberships = await guardInfra(() =>
+    db
+      .select({ member: workspaceMembers, workspace: workspaces })
+      .from(workspaceMembers)
+      .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+      .where(eq(workspaceMembers.userId, user.id))
+  );
 
   if (memberships.length === 0) redirect("/setup");
 
