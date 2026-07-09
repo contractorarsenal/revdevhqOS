@@ -7,7 +7,7 @@ import { createServerClient } from "@supabase/ssr";
  * keeps the cookies fresh. Authorization (workspace membership, roles) is
  * enforced server-side in requireUser/requireWorkspace — never here alone.
  */
-const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/auth"];
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/auth", "/setup-required"];
 
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
