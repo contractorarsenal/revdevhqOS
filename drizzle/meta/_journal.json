@@ -36,6 +36,48 @@
       "when": 1783613878120,
       "tag": "0004_payment_voiding",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783643399818,
+      "tag": "0005_recurring_expenses_branding",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783654652631,
+      "tag": "0006_calendar_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783654731680,
+      "tag": "0007_expenses_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783655935638,
+      "tag": "0008_calendar_events_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783657688600,
+      "tag": "0009_projects_and_scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783657704132,
+      "tag": "0010_projects_rls",
+      "breakpoints": true
     }
   ]
 }

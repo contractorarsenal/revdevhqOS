@@ -8,7 +8,12 @@ export default async function SettingsPage() {
   const [members, stages] = await Promise.all([listMembers(ctx.workspace.id), listStages(ctx.workspace.id)]);
   return (
     <SettingsView
-      workspace={{ name: ctx.workspace.name, timezone: ctx.workspace.timezone, slug: ctx.workspace.slug }}
+      workspace={{
+        name: ctx.workspace.name, timezone: ctx.workspace.timezone, slug: ctx.workspace.slug,
+        businessName: ctx.workspace.businessName, primaryColor: ctx.workspace.primaryColor,
+        accentColor: ctx.workspace.accentColor, businessEmail: ctx.workspace.businessEmail,
+        businessPhone: ctx.workspace.businessPhone, website: ctx.workspace.website,
+      }}
       role={ctx.role}
       members={members}
       stages={stages}

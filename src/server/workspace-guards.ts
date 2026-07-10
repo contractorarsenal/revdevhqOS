@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db as appDb } from "@/lib/db";
 import {
-  clients, leads, opportunities, tasks, pipelineStages, invoices, workspaceMembers,
+  clients, leads, opportunities, tasks, pipelineStages, invoices, workspaceMembers, projects,
 } from "@/lib/db/schema";
 
 /**
@@ -88,10 +88,20 @@ export async function assertWorkspaceInvoice(workspaceId: string, invoiceId: Id)
   if (!row) throw new Error("Invoice not found in this workspace.");
 }
 
+export async function assertWorkspaceProject(workspaceId: string, projectId: Id): Promise<void> {
+  if (!projectId) return;
+  const [row] = await guardDeps.db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+    .limit(1);
+  if (!row) throw new Error("Project not found in this workspace.");
+}
+
 /** Convenience: guard the standard task/note relation set in one call. */
 export async function assertWorkspaceRelations(
   workspaceId: string,
-  rel: { clientId?: Id; leadId?: Id; opportunityId?: Id; taskId?: Id; assigneeId?: Id; ownerId?: Id }
+  rel: { clientId?: Id; leadId?: Id; opportunityId?: Id; taskId?: Id; assigneeId?: Id; ownerId?: Id; projectId?: Id }
 ): Promise<void> {
   await Promise.all([
     assertWorkspaceClient(workspaceId, rel.clientId),
@@ -100,5 +110,6 @@ export async function assertWorkspaceRelations(
     assertWorkspaceTask(workspaceId, rel.taskId),
     assertWorkspaceMember(workspaceId, rel.assigneeId),
     assertWorkspaceMember(workspaceId, rel.ownerId),
+    assertWorkspaceProject(workspaceId, rel.projectId),
   ]);
 }

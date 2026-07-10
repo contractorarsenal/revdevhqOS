@@ -155,6 +155,19 @@ await step("sign out; protected routes redirect", async () => {
 });
 
 await browser.close();
+
+// Clean up the throwaway auth user this run created — never leave it behind.
+try {
+  const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
+  const u = data.users.find((x) => x.email === EMAIL);
+  if (u) {
+    await admin.auth.admin.deleteUser(u.id);
+    console.log("cleaned up test user:", EMAIL);
+  }
+} catch (err) {
+  console.error("warning: could not clean up test user", EMAIL, err);
+}
+
 const failed = results.filter(([s]) => s === "FAIL").length;
 console.log(`\n${results.length - failed}/${results.length} verification steps passed`);
 process.exit(failed ? 1 : 0);

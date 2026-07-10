@@ -108,6 +108,38 @@ export const subscriptionSchema = z.object({
   status: z.enum(["trial", "active", "past_due", "paused", "canceled", "completed"]).default("active"),
   startDate: z.string().min(1, "Start date is required"),
   nextBillingDate: optionalDate,
+  paymentDay: z
+    .union([z.literal(""), z.coerce.number().int().min(1).max(28)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+});
+
+export const expenseSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
+  category: z.enum(["software", "office_rent", "payroll", "contractors", "ads", "tools", "misc"]).default("misc"),
+  amount: moneyField,
+  expenseDate: z.string().min(1, "Date is required"),
+  frequency: z.enum(["one_time", "monthly"]).default("one_time"),
+  vendor: optionalTrimmed,
+  notes: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+});
+
+export const workspaceBrandingSchema = z.object({
+  businessName: optionalTrimmed,
+  primaryColor: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #E11D48")])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  accentColor: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #E11D48")])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  businessEmail: optionalTrimmed,
+  businessPhone: optionalTrimmed,
+  website: optionalTrimmed,
 });
 
 export const invoiceItemSchema = z.object({
@@ -142,13 +174,33 @@ export const paymentSchema = z.object({
 export const taskSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(300),
   description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
-  status: z.enum(["todo", "in_progress", "completed", "canceled"]).default("todo"),
+  status: z.enum(["todo", "in_progress", "waiting", "completed", "canceled"]).default("todo"),
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   assigneeId: optionalTrimmed,
   clientId: uuidOrNull,
   leadId: uuidOrNull,
   opportunityId: uuidOrNull,
+  projectId: uuidOrNull,
   dueDate: optionalDate,
+  scheduledDate: optionalDate,
+  scheduledStartTime: optionalTrimmed,
+  scheduledEndTime: optionalTrimmed,
+  allDay: z.coerce.boolean().default(false),
+});
+
+export const projectSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
+  description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+  status: z.enum(["planning", "active", "on_hold", "completed", "archived"]).default("planning"),
+  ownerId: uuidOrNull,
+  clientId: uuidOrNull,
+  startDate: optionalDate,
+  dueDate: optionalDate,
+  color: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
 });
 
 export const noteSchema = z.object({
@@ -183,3 +235,22 @@ export type SubscriptionInput = z.infer<typeof subscriptionSchema>;
 export type InvoiceInput = z.infer<typeof invoiceSchema>;
 export type PaymentInput = z.infer<typeof paymentSchema>;
 export type TaskInput = z.infer<typeof taskSchema>;
+
+export const calendarEventSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(200),
+  eventType: z.enum(["work", "meeting", "focus_time", "deadline", "reminder", "personal", "out_of_office", "task"]).default("work"),
+  clientId: uuidOrNull,
+  taskId: uuidOrNull,
+  assigneeId: uuidOrNull,
+  date: z.string().min(1, "Date is required"),
+  startTime: z.string().min(1, "Start time is required"),
+  endTime: z.string().min(1, "End time is required"),
+  allDay: z.coerce.boolean().default(false),
+  color: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  notes: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+  status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled"),
+});

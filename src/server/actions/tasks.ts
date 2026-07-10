@@ -35,7 +35,12 @@ function taskValues(data: ReturnType<typeof taskSchema.parse>) {
     clientId: data.clientId ?? null,
     leadId: data.leadId ?? null,
     opportunityId: data.opportunityId ?? null,
+    projectId: data.projectId ?? null,
     dueDate: data.dueDate ? new Date(data.dueDate + "T12:00:00") : null,
+    scheduledDate: data.scheduledDate ?? null,
+    scheduledStartTime: data.scheduledStartTime ?? null,
+    scheduledEndTime: data.scheduledEndTime ?? null,
+    allDay: data.allDay,
   };
 }
 
@@ -111,6 +116,31 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
     const existing = await ownedTask(ctx.workspace.id, taskId);
     await db.delete(tasks).where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, ctx.workspace.id)));
     revalidateTaskPaths(existing.clientId);
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Persists a Kanban drag: updates only the task's status. */
+export async function setTaskStatus(taskId: string, status: "todo" | "in_progress" | "waiting" | "completed" | "canceled"): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("member");
+    const existing = await ownedTask(ctx.workspace.id, taskId);
+    await db
+      .update(tasks)
+      .set({ status, completedAt: status === "completed" ? new Date() : null })
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, ctx.workspace.id)));
+    if (status === "completed") {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "task.completed", entityType: "task", entityId: taskId,
+        clientId: existing.clientId, leadId: existing.leadId, opportunityId: existing.opportunityId,
+        metadata: { title: existing.title },
+      });
+    }
+    revalidateTaskPaths(existing.clientId);
+    revalidatePath("/projects");
     return { ok: true };
   } catch (err) {
     return actionError(err);

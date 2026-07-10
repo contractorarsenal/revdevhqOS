@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/lib/auth/session";
 import { getDashboardMetrics, getMrrTrend, getCollectedByMonth } from "@/server/queries/metrics";
 import { getRevenueByClient, getMrrByService } from "@/server/queries/reports";
+import { getExpensesForMonth } from "@/server/queries/expenses";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { FinancialAmount } from "@/components/shared/financial-amount";
@@ -12,13 +13,17 @@ import { BarChart3 } from "lucide-react";
 export default async function ReportsPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
-  const [metrics, mrrTrend, collected, revenueByClient, mrrByService] = await Promise.all([
+  const monthStart = `${new Date().toISOString().slice(0, 7)}-01`;
+  const [metrics, mrrTrend, collected, revenueByClient, mrrByService, monthExpenses] = await Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId),
     getRevenueByClient(wsId),
     getMrrByService(wsId),
+    getExpensesForMonth(wsId, monthStart),
   ]);
+  const profit = metrics.collectedThisMonth - monthExpenses;
+  const margin = metrics.collectedThisMonth > 0 ? Math.round((profit / metrics.collectedThisMonth) * 100) : null;
   const totalCollected12mo = collected.reduce((sum, m) => sum + m.collected, 0);
   const maxServiceMrr = Math.max(1, ...mrrByService.map((s) => s.mrr));
 
@@ -32,7 +37,8 @@ export default async function ReportsPage() {
         <MetricCard label="Collected · 12 mo" value={formatMoney(totalCollected12mo)} hint="successful payments" />
         <MetricCard label="Collected this month" value={formatMoney(metrics.collectedThisMonth)} />
         <MetricCard label="Open pipeline" value={formatMoney(metrics.pipelineValue)} hint={`weighted ${formatMoney(metrics.weightedPipeline)}`} />
-        <MetricCard label="Past-due" value={formatMoney(metrics.pastDue)} />
+        <MetricCard label="This month expenses" value={formatMoney(monthExpenses)} />
+        <MetricCard label="This month profit" value={formatMoney(profit)} hint={margin !== null ? `${margin}% margin` : undefined} />
       </MetricGrid>
 
       <div className="grid gap-4 xl:grid-cols-2">

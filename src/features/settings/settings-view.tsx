@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
-import { updateWorkspace } from "@/server/actions/workspace";
+import { updateWorkspace, updateWorkspaceBranding } from "@/server/actions/workspace";
 import { createStage, updateStage, moveStage } from "@/server/actions/pipeline";
 import { canAdminister, type WorkspaceRole } from "@/lib/permissions";
 import { PageHeader } from "@/components/shared/page-header";
@@ -22,7 +22,11 @@ type Member = { id: string; userId: string; name: string; email: string; role: s
 export function SettingsView({
   workspace, role, members, stages,
 }: {
-  workspace: { name: string; timezone: string; slug: string };
+  workspace: {
+    name: string; timezone: string; slug: string; businessName?: string | null;
+    primaryColor?: string | null; accentColor?: string | null;
+    businessEmail?: string | null; businessPhone?: string | null; website?: string | null;
+  };
   role: WorkspaceRole;
   members: Member[];
   stages: Stage[];
@@ -64,6 +68,23 @@ export function SettingsView({
     });
   }
 
+  function saveBranding(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const result = await updateWorkspaceBranding({
+        businessName: String(form.get("businessName") ?? ""),
+        primaryColor: String(form.get("primaryColor") ?? ""),
+        accentColor: String(form.get("accentColor") ?? ""),
+        businessEmail: String(form.get("businessEmail") ?? ""),
+        businessPhone: String(form.get("businessPhone") ?? ""),
+        website: String(form.get("website") ?? ""),
+      });
+      if (!result.ok) toast.error(result.error);
+      else { toast.success("Branding saved"); router.refresh(); }
+    });
+  }
+
   async function reorder(stage: Stage, direction: "up" | "down") {
     const result = await moveStage(stage.id, direction);
     if (!result.ok) toast.error(result.error);
@@ -101,6 +122,41 @@ export function SettingsView({
                   {pending ? "Saving…" : "Save changes"}
                 </Button>
               )}
+            </form>
+          </section>
+
+          <section className="mt-4 max-w-lg rounded-lg border border-border bg-card p-4 shadow-sm">
+            <h3 className="mb-3 text-[12.5px] font-semibold">Branding</h3>
+            <form onSubmit={saveBranding} className="space-y-3">
+              <div className="space-y-1">
+                <Label>Business / agency name</Label>
+                <Input name="businessName" defaultValue={workspace.businessName ?? ""} disabled={!admin} placeholder="Contractor Arsenal" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Primary color</Label>
+                  <Input name="primaryColor" type="text" defaultValue={workspace.primaryColor ?? ""} disabled={!admin} placeholder="#DC2626" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Accent color</Label>
+                  <Input name="accentColor" type="text" defaultValue={workspace.accentColor ?? ""} disabled={!admin} placeholder="#EA580C" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Business email</Label>
+                <Input name="businessEmail" defaultValue={workspace.businessEmail ?? ""} disabled={!admin} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Business phone</Label>
+                  <Input name="businessPhone" defaultValue={workspace.businessPhone ?? ""} disabled={!admin} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Website</Label>
+                  <Input name="website" defaultValue={workspace.website ?? ""} disabled={!admin} />
+                </div>
+              </div>
+              {admin && <Button type="submit" size="sm" disabled={pending}>{pending ? "Saving…" : "Save branding"}</Button>}
             </form>
           </section>
         </TabsContent>

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
-  Pencil, Plus, Archive, ChevronLeft, DollarSign, FileText, StickyNote, CheckSquare, ClipboardList,
+  Pencil, Plus, Archive, ChevronLeft, DollarSign, FileText, StickyNote, CheckSquare, ClipboardList, CalendarDays,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ClientAvatar } from "@/components/shared/client-avatar";
@@ -20,7 +20,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { invoiceBalance, isPastDue } from "@/lib/finance/metrics";
+import { formatFullDate } from "@/lib/date-tz";
 import { archiveClient, addContact, startOnboarding, toggleOnboardingStep } from "@/server/actions/clients";
+import { markSubscriptionCollected } from "@/server/actions/billing";
 import { addNote } from "@/server/actions/notes";
 import { setTaskCompletion } from "@/server/actions/tasks";
 import { setSubscriptionStatus } from "@/server/actions/billing";
@@ -28,21 +30,35 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ClientFormDialog } from "./client-form-dialog";
 import { TaskFormDialog } from "@/features/tasks/task-form-dialog";
 import { SubscriptionFormDialog } from "@/features/billing/subscription-form-dialog";
+import { SubscriptionEditDialog } from "@/features/billing/subscription-edit-dialog";
+import { EventFormDialog } from "@/features/calendar/event-form-dialog";
 import { PaymentFormDialog } from "@/features/billing/payment-form-dialog";
 import { InvoiceFormDialog } from "@/features/billing/invoice-form-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function ClientDetailView({
-  detail, members, services, allInvoices,
-}: { detail: any; members: any[]; services: any[]; allInvoices: any[] }) {
+  detail, billing, members, services,
+}: { detail: any; billing: any; members: any[]; services: any[] }) {
   const router = useRouter();
   const client = detail.client;
+  const clientInvoiceOptions = billing.invoices.map((i: any) => ({ ...i, clientName: client.name }));
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
+  const [editSub, setEditSub] = useState<any>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [invOpen, setInvOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [collectingId, setCollectingId] = useState<string | null>(null);
+
+  async function markCollected(subscriptionId: string) {
+    setCollectingId(subscriptionId);
+    const result = await markSubscriptionCollected(subscriptionId);
+    setCollectingId(null);
+    if (!result.ok) toast.error(result.error);
+    else { toast.success("Payment recorded"); router.refresh(); }
+  }
   const [noteBody, setNoteBody] = useState("");
 
   async function run(promise: Promise<{ ok: boolean; error?: string }>, success: string) {
@@ -158,6 +174,29 @@ export function ClientDetailView({
               )}
             </section>
 
+            {billing.duePayments.length > 0 && (
+              <section className="rounded-lg border border-amber-300 bg-amber-50 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+                <header className="flex items-center border-b border-amber-300/60 px-4 py-2.5 dark:border-amber-900/60">
+                  <h2 className="text-[12.5px] font-semibold">Payment due</h2>
+                </header>
+                {billing.duePayments.map((d: any) => (
+                  <div key={d.subscriptionId} className="flex items-center gap-3 border-t border-amber-300/40 px-4 py-2.5 first:border-t-0 dark:border-amber-900/40">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium">{d.serviceName}</p>
+                      <p className="text-[11.5px] text-muted-foreground">
+                        {new Date(d.dueMonth + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                        {d.late ? " · late" : ""}
+                      </p>
+                    </div>
+                    <FinancialAmount value={d.amount} />
+                    <Button size="sm" disabled={collectingId === d.subscriptionId} onClick={() => markCollected(d.subscriptionId)}>
+                      {collectingId === d.subscriptionId ? "Recording…" : "Mark collected"}
+                    </Button>
+                  </div>
+                ))}
+              </section>
+            )}
+
             <section className="rounded-lg border border-border bg-card shadow-sm">
               <header className="flex items-center border-b border-border/60 px-4 py-2.5">
                 <h2 className="text-[12.5px] font-semibold">Active services</h2>
@@ -186,6 +225,9 @@ export function ClientDetailView({
                         Resume
                       </Button>
                     )}
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditSub(s)}>
+                      Edit
+                    </Button>
                   </div>
                 ))
               )}
@@ -331,6 +373,17 @@ export function ClientDetailView({
               {[
                 ["Current MRR", <FinancialAmount key="m" value={detail.mrr} suffix="/mo" />],
                 ["Lifetime collected", <FinancialAmount key="l" value={detail.lifetimeCollected} />],
+                [
+                  "Next payment",
+                  billing.nextPayment ? (
+                    <span key="np" className={billing.nextPayment.late ? "font-semibold text-destructive" : ""}>
+                      {formatFullDate(billing.nextPayment.dueDate)}
+                      {billing.nextPayment.late ? " — overdue" : ""}
+                    </span>
+                  ) : (
+                    <span key="np" className="text-muted-foreground">No active subscription</span>
+                  ),
+                ],
                 ["Outstanding balance", <FinancialAmount key="o" value={outstanding} className={outstanding > 0 ? "text-destructive" : ""} />],
                 ["Open tasks", <span key="t" className="tabular-nums font-semibold">{openTasks.length}</span>],
                 ["Payment email", client.email ?? "—"],
@@ -352,6 +405,7 @@ export function ClientDetailView({
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setSubOpen(true)}><Plus className="size-3.5" /> Add service</Button>
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setInvOpen(true)}><FileText className="size-3.5" /> Create invoice</Button>
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setPayOpen(true)}><DollarSign className="size-3.5" /> Record payment</Button>
+              <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setScheduleOpen(true)}><CalendarDays className="size-3.5" /> Schedule activity</Button>
             </div>
           </div>
         </aside>
@@ -375,8 +429,10 @@ export function ClientDetailView({
         options={{ members: members.map((m: any) => ({ userId: m.userId, name: m.name })), clients: [], leads: [], opportunities: [] }}
       />
       <SubscriptionFormDialog open={subOpen} onOpenChange={setSubOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} services={services} />
-      <PaymentFormDialog open={payOpen} onOpenChange={setPayOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} invoices={allInvoices} />
-      <InvoiceFormDialog open={invOpen} onOpenChange={setInvOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} suggestedNumber={`INV-${String(1000 + allInvoices.length + 1)}`} />
+      <EventFormDialog open={scheduleOpen} onOpenChange={setScheduleOpen} defaults={{ clientId: client.id }} clients={[{ id: client.id, name: client.name }]} members={members.map((m: any) => ({ userId: m.userId, name: m.name }))} />
+      <PaymentFormDialog open={payOpen} onOpenChange={setPayOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} invoices={clientInvoiceOptions} />
+      <SubscriptionEditDialog open={Boolean(editSub)} onOpenChange={(o) => !o && setEditSub(null)} subscription={editSub} />
+      <InvoiceFormDialog open={invOpen} onOpenChange={setInvOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} suggestedNumber={`INV-${String(1000 + billing.invoices.length + 1)}`} />
 
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
         <DialogContent className="sm:max-w-md">

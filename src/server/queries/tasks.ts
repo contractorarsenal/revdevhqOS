@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { tasks, profiles, clients, leads, opportunities } from "@/lib/db/schema";
+import { tasks, profiles, clients, leads, opportunities, projects } from "@/lib/db/schema";
 
 export type TaskRow = Awaited<ReturnType<typeof listTasks>>[number];
 
@@ -23,6 +23,12 @@ export async function listTasks(workspaceId: string) {
       leadCompany: leads.company,
       opportunityId: tasks.opportunityId,
       opportunityName: opportunities.name,
+      projectId: tasks.projectId,
+      projectName: projects.name,
+      scheduledDate: tasks.scheduledDate,
+      scheduledStartTime: tasks.scheduledStartTime,
+      scheduledEndTime: tasks.scheduledEndTime,
+      allDay: tasks.allDay,
       createdAt: tasks.createdAt,
     })
     .from(tasks)
@@ -30,6 +36,7 @@ export async function listTasks(workspaceId: string) {
     .leftJoin(clients, eq(tasks.clientId, clients.id))
     .leftJoin(leads, eq(tasks.leadId, leads.id))
     .leftJoin(opportunities, eq(tasks.opportunityId, opportunities.id))
+    .leftJoin(projects, eq(tasks.projectId, projects.id))
     .where(eq(tasks.workspaceId, workspaceId))
     .orderBy(desc(tasks.createdAt));
 }

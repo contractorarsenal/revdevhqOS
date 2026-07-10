@@ -1,0 +1,1 @@
+ALTER TABLE "calendar_events" ENABLE ROW LEVEL SECURITY;

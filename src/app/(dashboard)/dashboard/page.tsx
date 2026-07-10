@@ -5,6 +5,9 @@ import {
   getDashboardMetrics, getMrrTrend, getCollectedByMonth, getRecentActivity, getAttentionQueue,
 } from "@/server/queries/metrics";
 import { listPayments } from "@/server/queries/billing";
+import { listDueSubscriptions } from "@/server/queries/recurring";
+import { listTodayFeed } from "@/server/queries/calendar";
+import { todayInTimezone, dayBoundsInTimezone, formatTimeLabel } from "@/lib/date-tz";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
@@ -24,13 +27,17 @@ function greeting() {
 export default async function DashboardPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
-  const [metrics, mrrTrend, collected, activity, attention, payments] = await timed("dashboard queries", () => Promise.all([
+  const today = todayInTimezone(ctx.workspace.timezone);
+  const { start: todayStart, end: todayEnd } = dayBoundsInTimezone(ctx.workspace.timezone, today);
+  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId),
     getRecentActivity(wsId),
     getAttentionQueue(wsId),
     listPayments(wsId),
+    listDueSubscriptions(wsId),
+    listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
@@ -98,40 +105,95 @@ export default async function DashboardPage() {
             ) : (
               <ul>
                 {attention.overdueInvoices.map((inv) => (
-                  <li key={inv.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="h-7 w-0.5 rounded-full bg-red-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-medium">Invoice {inv.number} overdue</p>
-                      <p className="truncate text-[11px] text-muted-foreground">{inv.clientName} · due {inv.dueDate}</p>
-                    </div>
-                    <FinancialAmount value={invoiceBalance(inv)} className="text-red-700 dark:text-red-400" />
+                  <li key={inv.id} className="border-t border-border/40 first:border-t-0">
+                    <Link href={`/billing?tab=invoices&open=${inv.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="h-7 w-0.5 shrink-0 rounded-full bg-red-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">Invoice {inv.number} overdue</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{inv.clientName} · due {inv.dueDate}</p>
+                      </div>
+                      <FinancialAmount value={invoiceBalance(inv)} className="text-red-700 dark:text-red-400" />
+                    </Link>
                   </li>
                 ))}
                 {attention.overdueTasks.map((t) => (
-                  <li key={t.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="h-7 w-0.5 rounded-full bg-red-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-medium">{t.title}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {t.clientName ? `${t.clientName} · ` : ""}task overdue
-                      </p>
-                    </div>
-                    <AlertTriangle className="size-3.5 text-red-600" />
+                  <li key={t.id} className="border-t border-border/40 first:border-t-0">
+                    <Link href={`/tasks?open=${t.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="h-7 w-0.5 shrink-0 rounded-full bg-red-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">{t.title}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {t.clientName ? `${t.clientName} · ` : ""}task overdue
+                        </p>
+                      </div>
+                      <AlertTriangle className="size-3.5 shrink-0 text-red-600" />
+                    </Link>
                   </li>
                 ))}
                 {attention.renewals.map((r) => (
-                  <li key={r.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="h-7 w-0.5 rounded-full bg-amber-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-medium">Renewal — {r.clientName}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">bills {r.nextBillingDate}</p>
-                    </div>
-                    <FinancialAmount value={r.amount} />
+                  <li key={r.id} className="border-t border-border/40 first:border-t-0">
+                    <Link href={`/clients/${r.clientId}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="h-7 w-0.5 shrink-0 rounded-full bg-amber-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">Renewal — {r.clientName}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">bills {r.nextBillingDate}</p>
+                      </div>
+                      <FinancialAmount value={r.amount} />
+                    </Link>
                   </li>
                 ))}
               </ul>
             )}
           </section>
+
+          {todaySchedule.length > 0 && (
+            <section className="rounded-lg border border-border bg-card shadow-sm">
+              <header className="flex items-center border-b border-border/60 px-4 py-2.5">
+                <h2 className="text-[12.5px] font-semibold">Today&apos;s Schedule</h2>
+                <Link href="/calendar" className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
+                  Calendar <ArrowRight className="size-3" />
+                </Link>
+              </header>
+              <ul>
+                {todaySchedule.map((ev) => (
+                  <li key={`${ev.kind}-${ev.id}`} className="border-t border-border/40 first:border-t-0">
+                    <Link
+                      href={ev.kind === "task" ? `/tasks?open=${ev.taskId}` : `/calendar?event=${ev.id}`}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30"
+                    >
+                      <span className="w-14 shrink-0 text-[11.5px] font-semibold tabular-nums text-muted-foreground">
+                        {ev.allDay ? "All day" : formatTimeLabel(ev.displayStartTime)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">{ev.title}</p>
+                        {ev.clientName && <p className="truncate text-[11px] text-muted-foreground">{ev.clientName}</p>}
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {dueSubs.length > 0 && (
+            <section className="rounded-lg border border-amber-300 bg-amber-50 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+              <header className="flex items-center border-b border-amber-300/60 px-4 py-2.5 dark:border-amber-900/60">
+                <h2 className="text-[12.5px] font-semibold">Due recurring payments</h2>
+                <span className="ml-auto rounded-full bg-amber-100 px-1.5 text-[10.5px] font-semibold tabular-nums text-amber-800 dark:bg-amber-900 dark:text-amber-300">{dueSubs.length}</span>
+              </header>
+              <ul>
+                {dueSubs.slice(0, 5).map((s) => (
+                  <li key={s.id} className="flex items-center gap-2.5 border-t border-amber-300/40 px-4 py-2.5 first:border-t-0 dark:border-amber-900/40">
+                    <Link href={`/clients/${s.clientId}`} className="min-w-0 flex-1 hover:underline">
+                      <p className="truncate text-[12.5px] font-medium">{s.clientName}</p>
+                      <p className="text-[11px] text-muted-foreground">{s.late ? "late" : "due"}</p>
+                    </Link>
+                    <FinancialAmount value={s.amount} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <section className="rounded-lg border border-border bg-card shadow-sm">
             <header className="flex items-center border-b border-border/60 px-4 py-2.5">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -8,7 +8,7 @@ import {
   type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
 import { format } from "date-fns";
-import { Kanban, Plus, Trophy, XCircle, Pencil } from "lucide-react";
+import { Kanban, Plus, Trophy, XCircle, Pencil, ChevronDown, ChevronUp } from "lucide-react";
 import { type StageWithOpps } from "@/server/queries/pipeline";
 import { moveOpportunity, markOpportunityOutcome } from "@/server/actions/pipeline";
 import { PageHeader } from "@/components/shared/page-header";
@@ -65,20 +65,36 @@ function DraggableCard({ opp, onOpen }: { opp: Opp; onOpen: (o: Opp) => void }) 
 }
 
 function StageColumn({
-  stage, onOpen,
-}: { stage: StageWithOpps; onOpen: (o: Opp) => void }) {
+  stage, onOpen, collapsed, onToggleCollapse,
+}: { stage: StageWithOpps; onOpen: (o: Opp) => void; collapsed: boolean; onToggleCollapse: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const total = stage.opportunities.reduce((sum, o) => sum + toAmount(o.value), 0);
+  if (collapsed) {
+    return (
+      <button
+        onClick={onToggleCollapse}
+        className="flex h-full w-9 shrink-0 flex-col items-center gap-2 rounded-lg border border-border/60 bg-muted/40 py-3 hover:bg-muted/60 dark:bg-muted/20"
+        title={`Expand ${stage.name}`}
+      >
+        <ChevronDown className="size-3.5 text-muted-foreground" />
+        <span className="rounded-full border border-border bg-card px-1.5 text-[10px] font-semibold tabular-nums text-muted-foreground">{stage.opportunities.length}</span>
+        <span className="mt-1 origin-center rotate-180 whitespace-nowrap text-[11px] font-semibold [writing-mode:vertical-rl]">{stage.name}</span>
+      </button>
+    );
+  }
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex w-[248px] shrink-0 flex-col rounded-lg border border-border/60 bg-muted/40 dark:bg-muted/20",
+        "flex h-full w-[248px] shrink-0 flex-col rounded-lg border border-border/60 bg-muted/40 dark:bg-muted/20",
         isOver && "outline-2 outline-dashed outline-primary"
       )}
     >
-      <div className="px-3 pb-1.5 pt-2.5">
+      <div className="shrink-0 px-3 pb-1.5 pt-2.5">
         <div className="flex items-center gap-1.5">
+          <button onClick={onToggleCollapse} className="text-muted-foreground hover:text-foreground" title="Collapse">
+            <ChevronUp className="size-3.5" />
+          </button>
           <span className={cn("text-xs font-semibold", stage.isWon && "text-emerald-700 dark:text-emerald-400", stage.isLost && "text-red-700 dark:text-red-400")}>
             {stage.name}
           </span>
@@ -89,7 +105,7 @@ function StageColumn({
         </div>
         <p className="mt-0.5 text-[10.5px] tabular-nums text-muted-foreground">{formatMoney(total)} value</p>
       </div>
-      <div className="flex min-h-[60px] flex-col gap-1.5 px-2 pb-2">
+      <div className="flex min-h-[60px] flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-2">
         {stage.opportunities.map((opp) => (
           <DraggableCard key={opp.id} opp={opp} onOpen={onOpen} />
         ))}
@@ -117,6 +133,33 @@ export function PipelineView({
   const [convertTarget, setConvertTarget] = useState<Opp | null>(null);
   const [activeDrag, setActiveDrag] = useState<Opp | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = window.localStorage.getItem("rdhq-pipeline-collapsed");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  function toggleCollapse(stageId: string) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [stageId]: !prev[stageId] };
+      try { localStorage.setItem("rdhq-pipeline-collapsed", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  // Auto-scroll the board horizontally when dragging a card near an edge.
+  function onDragOverEdge(clientX: number) {
+    const el = boardRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const edge = 60;
+    if (clientX - rect.left < edge) el.scrollBy({ left: -16 });
+    else if (rect.right - clientX < edge) el.scrollBy({ left: 16 });
+  }
 
   const allOpps = useMemo(() => stages.flatMap((s) => s.opportunities), [stages]);
   const open = allOpps.filter((o) => o.status === "open");
@@ -131,9 +174,14 @@ export function PipelineView({
 
   function onDragStart(event: DragStartEvent) {
     setActiveDrag(allOpps.find((o) => o.id === event.active.id) ?? null);
+    window.addEventListener("pointermove", handlePointerMove);
+  }
+  function handlePointerMove(e: PointerEvent) {
+    onDragOverEdge(e.clientX);
   }
 
   async function onDragEnd(event: DragEndEvent) {
+    window.removeEventListener("pointermove", handlePointerMove);
     setActiveDrag(null);
     const oppId = String(event.active.id);
     const stageId = event.over ? String(event.over.id) : null;
@@ -160,7 +208,7 @@ export function PipelineView({
   }
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Sales Pipeline" description="Track revenue opportunities from first contact through closed revenue.">
         <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="size-3.5" /> Add Opportunity
@@ -179,9 +227,13 @@ export function PipelineView({
         <EmptyState icon={Kanban} title="No pipeline stages" description="Create stages in Settings → Pipeline to start tracking deals." />
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-          <div className="flex items-start gap-2.5 overflow-x-auto pb-3">
+          <div ref={boardRef} className="flex min-h-0 flex-1 items-stretch gap-2.5 overflow-x-auto pb-3">
             {stages.map((stage) => (
-              <StageColumn key={stage.id} stage={stage} onOpen={(o) => setDrawer(o)} />
+              <StageColumn
+                key={stage.id} stage={stage} onOpen={(o) => setDrawer(o)}
+                collapsed={Boolean(collapsed[stage.id])}
+                onToggleCollapse={() => toggleCollapse(stage.id)}
+              />
             ))}
           </div>
           <DragOverlay>{activeDrag ? <div className="w-[232px]"><OppCard opp={activeDrag} dragging /></div> : null}</DragOverlay>

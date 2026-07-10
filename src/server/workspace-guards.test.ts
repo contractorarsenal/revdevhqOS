@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import * as schema from "@/lib/db/schema";
 import {
   guardDeps, assertWorkspaceClient, assertWorkspaceLead, assertWorkspaceOpportunity,
-  assertWorkspaceTask, assertWorkspacePipelineStage, assertWorkspaceInvoice,
+  assertWorkspaceTask, assertWorkspacePipelineStage, assertWorkspaceInvoice, assertWorkspaceProject,
   assertWorkspaceMember, assertWorkspaceRelations,
 } from "./workspace-guards";
 
@@ -21,7 +21,7 @@ const ids = {
   wsA: "", wsB: "",
   userA: "11111111-1111-4111-8111-111111111111",
   userB: "22222222-2222-4222-8222-222222222222",
-  clientB: "", leadB: "", oppB: "", taskB: "", stageB: "", invoiceB: "",
+  clientB: "", leadB: "", oppB: "", taskB: "", stageB: "", invoiceB: "", projectB: "",
   clientA: "",
 };
 
@@ -62,16 +62,23 @@ beforeAll(async () => {
   ids.taskB = taskB.id;
   const [invoiceB] = await db.insert(schema.invoices).values({ workspaceId: wsB.id, clientId: clientB.id, number: "INV-B1" }).returning();
   ids.invoiceB = invoiceB.id;
+  const [projectB] = await db.insert(schema.projects).values({ workspaceId: wsB.id, name: "Project B" }).returning();
+  ids.projectB = projectB.id;
 });
 
 describe("workspace relationship guards", () => {
-  it("reject cross-workspace client / lead / opportunity / task / stage / invoice", async () => {
+  it("reject cross-workspace client / lead / opportunity / task / stage / invoice / project", async () => {
     await expect(assertWorkspaceClient(ids.wsA, ids.clientB)).rejects.toThrow("Client not found");
     await expect(assertWorkspaceLead(ids.wsA, ids.leadB)).rejects.toThrow("Lead not found");
     await expect(assertWorkspaceOpportunity(ids.wsA, ids.oppB)).rejects.toThrow("Opportunity not found");
     await expect(assertWorkspaceTask(ids.wsA, ids.taskB)).rejects.toThrow("Task not found");
     await expect(assertWorkspacePipelineStage(ids.wsA, ids.stageB)).rejects.toThrow("Stage not found");
     await expect(assertWorkspaceInvoice(ids.wsA, ids.invoiceB)).rejects.toThrow("Invoice not found");
+    await expect(assertWorkspaceProject(ids.wsA, ids.projectB)).rejects.toThrow("Project not found");
+  });
+
+  it("a task cannot reference another workspace's project (assertWorkspaceRelations)", async () => {
+    await expect(assertWorkspaceRelations(ids.wsA, { projectId: ids.projectB })).rejects.toThrow("Project not found");
   });
 
   it("reject assigning owner/assignee who is not a member of the workspace", async () => {

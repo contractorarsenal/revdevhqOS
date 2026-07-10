@@ -43,6 +43,7 @@ export function SubscriptionFormDialog({
         status: "active",
         startDate: new Date().toISOString().slice(0, 10),
         nextBillingDate: "",
+        paymentDay: "",
       });
     }
   }, [open, fixedClientId, clients, services, form]);
@@ -115,6 +116,10 @@ export function SubscriptionFormDialog({
               <div className="space-y-1">
                 <Label>Next billing date</Label>
                 <Input type="date" {...form.register("nextBillingDate")} />
+              </div>
+              <div className="space-y-1">
+                <Label>Payment day of month</Label>
+                <Input type="number" min="1" max="28" {...form.register("paymentDay")} placeholder="e.g. 5" />
               </div>
             </div>
             {serverError && <p className="text-sm text-destructive">{serverError}</p>}
