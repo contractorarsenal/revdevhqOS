@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
 import { calendarEventSchema } from "@/lib/validation";
+import { toLocalDateInput } from "@/lib/date-tz";
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from "@/server/actions/calendar";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -19,19 +20,26 @@ type FormValues = z.input<typeof calendarEventSchema>;
 const COLORS = ["#4F46E5", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#15803D"];
 
 export type EventDefaults = {
-  id?: string; title?: string; clientId?: string | null; date?: string;
+  id?: string; title?: string; eventType?: string; clientId?: string | null; date?: string;
   startTime?: string; endTime?: string; assigneeId?: string | null;
-  color?: string | null; notes?: string | null; status?: string;
+  color?: string | null; notes?: string | null; status?: string; allDay?: boolean;
 };
 
+const EVENT_TYPES = [
+  ["work", "Work"], ["meeting", "Meeting"], ["focus_time", "Focus time"], ["deadline", "Deadline"],
+  ["reminder", "Reminder"], ["personal", "Personal"], ["out_of_office", "Out of office"],
+] as const;
+
 export function EventFormDialog({
-  open, onOpenChange, defaults, clients, members,
+  open, onOpenChange, defaults, clients, members, today,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaults?: EventDefaults | null;
   clients: { id: string; name: string }[];
   members: { userId: string; name: string }[];
+  /** Workspace-local "today" (YYYY-MM-DD) — used as the default event date. */
+  today?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -42,14 +50,15 @@ export function EventFormDialog({
   useEffect(() => {
     if (open) {
       setServerError(null);
-      const now = new Date();
       form.reset({
         title: defaults?.title ?? "",
+        eventType: (defaults?.eventType as FormValues["eventType"]) ?? "work",
         clientId: defaults?.clientId ?? "",
         assigneeId: defaults?.assigneeId ?? "",
-        date: defaults?.date ?? now.toISOString().slice(0, 10),
+        date: defaults?.date ?? today ?? toLocalDateInput(new Date()),
         startTime: defaults?.startTime ?? "09:00",
         endTime: defaults?.endTime ?? "10:00",
+        allDay: defaults?.allDay ?? false,
         color: defaults?.color ?? COLORS[0],
         notes: defaults?.notes ?? "",
         status: (defaults?.status as FormValues["status"]) ?? "scheduled",
@@ -77,16 +86,26 @@ export function EventFormDialog({
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
           <div className="space-y-1">
             <Label>Title *</Label>
-            <Input {...form.register("title")} placeholder="Pressure Wash" />
+            <Input {...form.register("title")} placeholder="Team meeting, deadline, gym…" />
             {form.formState.errors.title && <p className="text-xs text-destructive">{form.formState.errors.title.message}</p>}
           </div>
           <div className="space-y-1">
-            <Label>Client</Label>
+            <Label>Event type</Label>
+            <select {...form.register("eventType")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
+              {EVENT_TYPES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label>Client <span className="font-normal text-muted-foreground">(optional)</span></Label>
             <select {...form.register("clientId")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
-              <option value="">None</option>
+              <option value="">None — personal or internal</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" {...form.register("allDay")} className="accent-primary" />
+            All day
+          </label>
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label>Date *</Label>

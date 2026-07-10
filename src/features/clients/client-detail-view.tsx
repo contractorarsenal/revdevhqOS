@@ -396,7 +396,7 @@ export function ClientDetailView({
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setSubOpen(true)}><Plus className="size-3.5" /> Add service</Button>
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setInvOpen(true)}><FileText className="size-3.5" /> Create invoice</Button>
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setPayOpen(true)}><DollarSign className="size-3.5" /> Record payment</Button>
-              <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setScheduleOpen(true)}><CalendarDays className="size-3.5" /> Schedule Job</Button>
+              <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setScheduleOpen(true)}><CalendarDays className="size-3.5" /> Schedule activity</Button>
             </div>
           </div>
         </aside>

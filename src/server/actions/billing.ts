@@ -7,7 +7,7 @@ import { services, subscriptions, invoices, invoiceItems, payments, clients, exp
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema, expenseSchema } from "@/lib/validation";
-import { roundCents, toAmount, recalcInvoiceAfterVoid, paymentAttribution, currentDueMonth, monthKey } from "@/lib/finance/metrics";
+import { roundCents, toAmount, recalcInvoiceAfterVoid, paymentAttribution, currentDueMonth } from "@/lib/finance/metrics";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");

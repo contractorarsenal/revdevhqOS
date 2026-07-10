@@ -4,7 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutGrid, Users, Target, Kanban, CreditCard, CheckSquare, BarChart3,
-  ClipboardList, Settings, Receipt, CalendarDays,
+  ClipboardList, Settings, Receipt, CalendarDays, FolderKanban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
@@ -18,6 +18,7 @@ const PRIMARY = [
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 

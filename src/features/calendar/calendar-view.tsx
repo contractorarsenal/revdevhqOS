@@ -1,12 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { EventFormDialog, type EventDefaults } from "./event-form-dialog";
+import { toLocalDateInput } from "@/lib/date-tz";
 import { cn } from "@/lib/utils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -25,9 +24,8 @@ function startOfWeek(d: Date) {
   s.setHours(0, 0, 0, 0);
   return s;
 }
-function toDateInput(d: Date) { return d.toISOString().slice(0, 10); }
+function toDateInput(d: Date) { return toLocalDateInput(d); }
 function toTimeInput(d: Date) { return d.toTimeString().slice(0, 5); }
-function fmtTime(d: Date) { return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); }
 
 function EventBlock({ ev, onClick, style }: { ev: Ev; onClick: () => void; style?: React.CSSProperties }) {
   return (
@@ -36,21 +34,23 @@ function EventBlock({ ev, onClick, style }: { ev: Ev; onClick: () => void; style
       style={{ backgroundColor: (ev.color ?? "#4F46E5") + "22", borderColor: ev.color ?? "#4F46E5", ...style }}
       className={cn(
         "absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm hover:brightness-95",
-        ev.status === "cancelled" && "opacity-50 line-through"
+        (ev.status === "cancelled" || ev.status === "canceled") && "opacity-50 line-through"
       )}
     >
-      <p className="truncate font-semibold" style={{ color: ev.color ?? "#4F46E5" }}>{ev.title}</p>
+      <p className="truncate font-semibold" style={{ color: ev.color ?? "#4F46E5" }}>
+        {ev.kind === "task" && "✓ "}{ev.title}
+      </p>
       {ev.clientName && <p className="truncate text-muted-foreground">{ev.clientName}</p>}
     </button>
   );
 }
 
 export function CalendarView({
-  events, members, clients, initialWeekStart,
-}: { events: Ev[]; members: { userId: string; name: string }[]; clients: { id: string; name: string }[]; initialWeekStart: string }) {
-  const router = useRouter();
+  events, members, clients, today,
+}: { events: Ev[]; members: { userId: string; name: string }[]; clients: { id: string; name: string }[]; today: string }) {
+  const todayDate = useMemo(() => new Date(today + "T12:00:00"), [today]);
   const [view, setView] = useState<ViewMode>("week");
-  const [anchor, setAnchor] = useState(new Date(initialWeekStart));
+  const [anchor, setAnchor] = useState(todayDate);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<EventDefaults | null>(null);
 
@@ -75,11 +75,12 @@ export function CalendarView({
     setEditing(day ? { date: toDateInput(day) } : null);
     setFormOpen(true);
   }
-  function openEdit(ev: Ev) {
+  function openItem(ev: Ev) {
+    if (ev.kind === "task") return; // tasks open in Tasks; calendar shows them read-only for now
     setEditing({
-      id: ev.id, title: ev.title, clientId: ev.clientId, date: toDateInput(ev.startAt),
+      id: ev.id, title: ev.title, eventType: ev.eventType, clientId: ev.clientId, date: toDateInput(ev.startAt),
       startTime: toTimeInput(ev.startAt), endTime: toTimeInput(ev.endAt),
-      assigneeId: ev.assigneeId, color: ev.color, notes: ev.notes, status: ev.status,
+      assigneeId: ev.assigneeId, color: ev.color, notes: ev.notes, status: ev.status, allDay: ev.allDay,
     });
     setFormOpen(true);
   }
@@ -102,10 +103,10 @@ export function CalendarView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Calendar" description="Schedule and track jobs, estimates, and team time.">
+      <PageHeader title="Calendar" description="Your schedule — meetings, focus time, deadlines, and scheduled tasks.">
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="size-8" onClick={() => navigate(-1)}><ChevronLeft className="size-4" /></Button>
-          <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())}>Today</Button>
+          <Button variant="outline" size="sm" onClick={() => setAnchor(todayDate)}>Today</Button>
           <Button variant="ghost" size="icon" className="size-8" onClick={() => navigate(1)}><ChevronRight className="size-4" /></Button>
         </div>
         <p className="min-w-[180px] text-sm font-semibold">{label}</p>
@@ -116,7 +117,7 @@ export function CalendarView({
             </button>
           ))}
         </div>
-        <Button size="sm" className="gap-1.5" onClick={() => openNew()}><Plus className="size-3.5" /> Schedule Event</Button>
+        <Button size="sm" className="gap-1.5" onClick={() => openNew()}><Plus className="size-3.5" /> New Event</Button>
       </PageHeader>
 
       {view === "month" ? (
@@ -127,14 +128,15 @@ export function CalendarView({
           {days.map((day, i) => {
             const dayEvents = eventsOn(day);
             const inMonth = day.getMonth() === anchor.getMonth();
+            const isToday = day.toDateString() === todayDate.toDateString();
             return (
               <button key={i} onClick={() => openNew(day)} className={cn("min-h-[92px] bg-card p-1.5 text-left hover:bg-muted/40", !inMonth && "opacity-40")}>
-                <p className="text-[11px] font-semibold">{day.getDate()}</p>
+                <p className={cn("text-[11px] font-semibold", isToday && "flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground")}>{day.getDate()}</p>
                 <div className="mt-1 space-y-0.5">
                   {dayEvents.slice(0, 3).map((ev) => (
-                    <div key={ev.id} onClick={(e) => { e.stopPropagation(); openEdit(ev); }}
+                    <div key={ev.id} onClick={(e) => { e.stopPropagation(); openItem(ev); }}
                       className="truncate rounded px-1 text-[10px] font-medium" style={{ backgroundColor: (ev.color ?? "#4F46E5") + "22", color: ev.color ?? "#4F46E5" }}>
-                      {ev.title}
+                      {ev.kind === "task" && "✓ "}{ev.title}
                     </div>
                   ))}
                   {dayEvents.length > 3 && <p className="text-[10px] text-muted-foreground">+{dayEvents.length - 3} more</p>}
@@ -156,7 +158,7 @@ export function CalendarView({
           <div className={cn("grid flex-1", view === "week" ? "grid-cols-7" : "grid-cols-1")}>
             {days.map((day, i) => {
               const dayEvents = eventsOn(day);
-              const isToday = day.toDateString() === new Date().toDateString();
+              const isToday = day.toDateString() === todayDate.toDateString();
               return (
                 <div key={i} className="relative border-r border-border last:border-r-0">
                   <div className={cn("sticky top-0 z-10 h-9 border-b border-border bg-card px-2 py-1 text-center text-[11px] font-semibold", isToday && "text-primary")}>
@@ -172,7 +174,7 @@ export function CalendarView({
                       const top = (startMin / 60) * hourHeight;
                       const height = (durMin / 60) * hourHeight;
                       return (
-                        <EventBlock key={ev.id} ev={ev} onClick={(e?: any) => { e?.stopPropagation?.(); openEdit(ev); }} style={{ top, height }} />
+                        <EventBlock key={`${ev.kind}-${ev.id}`} ev={ev} onClick={(e?: any) => { e?.stopPropagation?.(); openItem(ev); }} style={{ top, height }} />
                       );
                     })}
                   </div>
@@ -183,7 +185,7 @@ export function CalendarView({
         </div>
       )}
 
-      <EventFormDialog open={formOpen} onOpenChange={setFormOpen} defaults={editing} clients={clients} members={members} />
+      <EventFormDialog open={formOpen} onOpenChange={setFormOpen} defaults={editing} clients={clients} members={members} today={today} />
     </div>
   );
 }

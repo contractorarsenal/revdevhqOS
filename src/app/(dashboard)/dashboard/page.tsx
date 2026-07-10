@@ -6,7 +6,8 @@ import {
 } from "@/server/queries/metrics";
 import { listPayments } from "@/server/queries/billing";
 import { listDueSubscriptions } from "@/server/queries/recurring";
-import { listTodaySchedule } from "@/server/queries/calendar";
+import { listTodayFeed } from "@/server/queries/calendar";
+import { todayInTimezone, dayBoundsInTimezone } from "@/lib/date-tz";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
@@ -26,6 +27,8 @@ function greeting() {
 export default async function DashboardPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
+  const today = todayInTimezone(ctx.workspace.timezone);
+  const { start: todayStart, end: todayEnd } = dayBoundsInTimezone(ctx.workspace.timezone, today);
   const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
@@ -34,7 +37,7 @@ export default async function DashboardPage() {
     getAttentionQueue(wsId),
     listPayments(wsId),
     listDueSubscriptions(wsId),
-    listTodaySchedule(wsId),
+    listTodayFeed(wsId, todayStart, todayEnd),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;

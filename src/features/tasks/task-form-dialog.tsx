@@ -7,8 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
 import { taskSchema } from "@/lib/validation";
+import { toLocalDateInput } from "@/lib/date-tz";
 import { createTask, updateTask } from "@/server/actions/tasks";
-import { createCalendarEvent } from "@/server/actions/calendar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,16 +22,43 @@ export type RelatedOptions = {
   clients: { id: string; name: string }[];
   leads: { id: string; company: string }[];
   opportunities: { id: string; name: string }[];
+  projects?: { id: string; name: string }[];
 };
 
 export function TaskFormDialog({
-  open, onOpenChange, options, task, fixedClientId,
+  open, onOpenChange, options, task, fixedClientId, fixedProjectId, today,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   options: RelatedOptions;
   task?: (Partial<FormValues> & { id: string; dueDateValue?: string | null }) | null;
   fixedClientId?: string;
+  fixedProjectId?: string;
+  /** Workspace-local "today" (YYYY-MM-DD) — used as the default scheduled date. Falls back to the browser's local date if omitted. */
+  today?: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {open && (
+        <TaskFormBody
+          key={task?.id ?? "new"}
+          onOpenChange={onOpenChange} options={options} task={task}
+          fixedClientId={fixedClientId} fixedProjectId={fixedProjectId} today={today}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+function TaskFormBody({
+  onOpenChange, options, task, fixedClientId, fixedProjectId, today,
+}: {
+  onOpenChange: (open: boolean) => void;
+  options: RelatedOptions;
+  task?: (Partial<FormValues> & { id: string; dueDateValue?: string | null }) | null;
+  fixedClientId?: string;
+  fixedProjectId?: string;
+  today?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -39,26 +66,30 @@ export function TaskFormDialog({
   const isEdit = Boolean(task?.id);
 
   const form = useForm<FormValues>({ resolver: zodResolver(taskSchema) });
-  const [addToCalendar, setAddToCalendar] = useState(false);
-  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
-  const [eventStart, setEventStart] = useState("09:00");
-  const [eventEnd, setEventEnd] = useState("10:00");
+  const [schedule, setSchedule] = useState(() => ({
+    addToCalendar: Boolean(task?.scheduledDate),
+    eventDate: task?.scheduledDate ?? today ?? toLocalDateInput(new Date()),
+    eventAllDay: Boolean(task?.allDay),
+    eventStart: task?.scheduledStartTime ?? "09:00",
+    eventEnd: task?.scheduledEndTime ?? "10:00",
+  }));
+  const { addToCalendar, eventDate, eventAllDay, eventStart, eventEnd } = schedule;
 
   useEffect(() => {
-    if (open) {
-      form.reset({
-        title: task?.title ?? "",
-        description: task?.description ?? "",
-        status: (task?.status as FormValues["status"]) ?? "todo",
-        priority: (task?.priority as FormValues["priority"]) ?? "medium",
-        assigneeId: task?.assigneeId ?? "",
-        clientId: fixedClientId ?? task?.clientId ?? "",
-        leadId: task?.leadId ?? "",
-        opportunityId: task?.opportunityId ?? "",
-        dueDate: task?.dueDateValue ?? "",
-      });
-    }
-  }, [open, task, fixedClientId, form]);
+    form.reset({
+      title: task?.title ?? "",
+      description: task?.description ?? "",
+      status: (task?.status as FormValues["status"]) ?? "todo",
+      priority: (task?.priority as FormValues["priority"]) ?? "medium",
+      assigneeId: task?.assigneeId ?? "",
+      clientId: fixedClientId ?? task?.clientId ?? "",
+      leadId: task?.leadId ?? "",
+      opportunityId: task?.opportunityId ?? "",
+      projectId: fixedProjectId ?? task?.projectId ?? "",
+      dueDate: task?.dueDateValue ?? "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onSubmit(values: FormValues) {
     setServerError(null);
@@ -67,21 +98,14 @@ export function TaskFormDialog({
       clientId: values.clientId || null,
       leadId: values.leadId || null,
       opportunityId: values.opportunityId || null,
+      scheduledDate: addToCalendar ? eventDate : null,
+      scheduledStartTime: addToCalendar && !eventAllDay ? eventStart : null,
+      scheduledEndTime: addToCalendar && !eventAllDay ? eventEnd : null,
+      allDay: addToCalendar ? eventAllDay : false,
     };
     startTransition(async () => {
       const result = isEdit ? await updateTask(task!.id, payload) : await createTask(payload);
       if (!result.ok) return setServerError(result.error);
-      if (!isEdit && addToCalendar) {
-        await createCalendarEvent({
-          title: values.title,
-          clientId: values.clientId || null,
-          date: eventDate,
-          startTime: eventStart,
-          endTime: eventEnd,
-          assigneeId: values.assigneeId || null,
-          status: "scheduled",
-        });
-      }
       toast.success(isEdit ? "Task updated" : addToCalendar ? "Task created and added to calendar" : "Task created");
       onOpenChange(false);
       router.refresh();
@@ -89,11 +113,10 @@ export function TaskFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "Add task"}</DialogTitle>
-          <DialogDescription>Tasks can be linked to a client, lead, or opportunity.</DialogDescription>
+          <DialogDescription>Organize by project, optionally link a client, and schedule it on your calendar.</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-2 gap-3">
           <div className="col-span-2 space-y-1">
@@ -108,7 +131,7 @@ export function TaskFormDialog({
           <div className="space-y-1">
             <Label>Status</Label>
             <select {...form.register("status")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
-              {["todo", "in_progress", "completed", "canceled"].map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+              {["todo", "in_progress", "waiting", "completed", "canceled"].map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
             </select>
           </div>
           <div className="space-y-1">
@@ -128,10 +151,17 @@ export function TaskFormDialog({
             <Label>Due date</Label>
             <Input type="date" {...form.register("dueDate")} />
           </div>
+          <div className="space-y-1">
+            <Label>Project</Label>
+            <select {...form.register("projectId")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
+              <option value="">None</option>
+              {(options.projects ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           {!fixedClientId && (
             <>
               <div className="space-y-1">
-                <Label>Client</Label>
+                <Label>Client <span className="font-normal text-muted-foreground">(optional)</span></Label>
                 <select {...form.register("clientId")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
                   <option value="">None</option>
                   {options.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -153,30 +183,38 @@ export function TaskFormDialog({
               </div>
             </>
           )}
-          {!isEdit && (
-            <div className="col-span-2 space-y-2 rounded-md border border-border p-2.5">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input type="checkbox" checked={addToCalendar} onChange={(e) => setAddToCalendar(e.target.checked)} className="accent-primary" />
-                Add to Calendar
-              </label>
-              {addToCalendar && (
+          <div className="col-span-2 space-y-2 rounded-md border border-border p-2.5">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={addToCalendar} onChange={(e) => setSchedule((s) => ({ ...s, addToCalendar: e.target.checked }))} className="accent-primary" />
+              Schedule on Calendar
+            </label>
+            {addToCalendar && (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={eventAllDay} onChange={(e) => setSchedule((s) => ({ ...s, eventAllDay: e.target.checked }))} className="accent-primary" />
+                  All day
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Date</Label>
-                    <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+                    <Input type="date" value={eventDate} onChange={(e) => setSchedule((s) => ({ ...s, eventDate: e.target.value }))} />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Start</Label>
-                    <Input type="time" value={eventStart} onChange={(e) => setEventStart(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">End</Label>
-                    <Input type="time" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} />
-                  </div>
+                  {!eventAllDay && (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Start</Label>
+                        <Input type="time" value={eventStart} onChange={(e) => setSchedule((s) => ({ ...s, eventStart: e.target.value }))} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">End</Label>
+                        <Input type="time" value={eventEnd} onChange={(e) => setSchedule((s) => ({ ...s, eventEnd: e.target.value }))} />
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
           {serverError && <p className="col-span-2 text-sm text-destructive">{serverError}</p>}
           <DialogFooter className="col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -184,6 +222,5 @@ export function TaskFormDialog({
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
   );
 }

@@ -174,13 +174,33 @@ export const paymentSchema = z.object({
 export const taskSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(300),
   description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
-  status: z.enum(["todo", "in_progress", "completed", "canceled"]).default("todo"),
+  status: z.enum(["todo", "in_progress", "waiting", "completed", "canceled"]).default("todo"),
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   assigneeId: optionalTrimmed,
   clientId: uuidOrNull,
   leadId: uuidOrNull,
   opportunityId: uuidOrNull,
+  projectId: uuidOrNull,
   dueDate: optionalDate,
+  scheduledDate: optionalDate,
+  scheduledStartTime: optionalTrimmed,
+  scheduledEndTime: optionalTrimmed,
+  allDay: z.coerce.boolean().default(false),
+});
+
+export const projectSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
+  description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+  status: z.enum(["planning", "active", "on_hold", "completed", "archived"]).default("planning"),
+  ownerId: uuidOrNull,
+  clientId: uuidOrNull,
+  startDate: optionalDate,
+  dueDate: optionalDate,
+  color: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
 });
 
 export const noteSchema = z.object({
@@ -218,12 +238,14 @@ export type TaskInput = z.infer<typeof taskSchema>;
 
 export const calendarEventSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
+  eventType: z.enum(["work", "meeting", "focus_time", "deadline", "reminder", "personal", "out_of_office", "task"]).default("work"),
   clientId: uuidOrNull,
   taskId: uuidOrNull,
   assigneeId: uuidOrNull,
   date: z.string().min(1, "Date is required"),
   startTime: z.string().min(1, "Start time is required"),
   endTime: z.string().min(1, "End time is required"),
+  allDay: z.coerce.boolean().default(false),
   color: z
     .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
     .transform((v) => (v === "" ? null : v))

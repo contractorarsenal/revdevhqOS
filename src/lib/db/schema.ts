@@ -12,7 +12,7 @@ export const subscriptionStatus = pgEnum("subscription_status", ["trial", "activ
 export const billingFrequency = pgEnum("billing_frequency", ["one_time", "weekly", "monthly", "quarterly", "yearly"]);
 export const invoiceStatus = pgEnum("invoice_status", ["draft", "open", "paid", "past_due", "void"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "refunded", "voided"]);
-export const taskStatus = pgEnum("task_status", ["todo", "in_progress", "completed", "canceled"]);
+export const taskStatus = pgEnum("task_status", ["todo", "in_progress", "waiting", "completed", "canceled"]);
 export const taskPriority = pgEnum("task_priority", ["low", "medium", "high", "urgent"]);
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -271,16 +271,21 @@ export const expenses = pgTable("expenses", {
 ]);
 
 export const calendarEventStatus = pgEnum("calendar_event_status", ["scheduled", "in_progress", "completed", "cancelled"]);
+export const calendarEventType = pgEnum("calendar_event_type", [
+  "work", "meeting", "focus_time", "deadline", "reminder", "personal", "out_of_office", "task",
+]);
 
 export const calendarEvents = pgTable("calendar_events", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  eventType: calendarEventType("event_type").notNull().default("work"),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
   assigneeId: uuid("assignee_id").references(() => profiles.id, { onDelete: "set null" }),
   startAt: timestamp("start_at", { withTimezone: true }).notNull(),
   endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+  allDay: boolean("all_day").notNull().default(false),
   color: text("color"),
   notes: text("notes"),
   status: calendarEventStatus("status").notNull().default("scheduled"),
@@ -291,6 +296,26 @@ export const calendarEvents = pgTable("calendar_events", {
   index("calendar_events_workspace_start_idx").on(t.workspaceId, t.startAt),
   index("calendar_events_client_idx").on(t.clientId),
   index("calendar_events_task_idx").on(t.taskId),
+]);
+
+export const projectStatus = pgEnum("project_status", ["planning", "active", "on_hold", "completed", "archived"]);
+
+export const projects = pgTable("projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: projectStatus("status").notNull().default("planning"),
+  ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  startDate: date("start_date"),
+  dueDate: date("due_date"),
+  color: text("color"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+}, (t) => [
+  index("projects_workspace_status_idx").on(t.workspaceId, t.status),
 ]);
 
 /* ========== operations ========== */
@@ -306,12 +331,20 @@ export const tasks = pgTable("tasks", {
   leadId: uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
   opportunityId: uuid("opportunity_id").references(() => opportunities.id, { onDelete: "cascade" }),
   dueDate: timestamp("due_date", { withTimezone: true }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  scheduledDate: date("scheduled_date"),
+  scheduledStartTime: text("scheduled_start_time"),
+  scheduledEndTime: text("scheduled_end_time"),
+  allDay: boolean("all_day").notNull().default(false),
+  calendarVisible: boolean("calendar_visible").notNull().default(true),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
   index("tasks_workspace_status_idx").on(t.workspaceId, t.status),
   index("tasks_workspace_due_idx").on(t.workspaceId, t.dueDate),
+  index("tasks_workspace_project_idx").on(t.workspaceId, t.projectId),
+  index("tasks_workspace_scheduled_idx").on(t.workspaceId, t.scheduledDate),
   index("tasks_assignee_idx").on(t.assigneeId),
   index("tasks_client_idx").on(t.clientId),
 ]);

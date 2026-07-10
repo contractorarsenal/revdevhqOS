@@ -1,40 +1,55 @@
 import "server-only";
-import { and, eq, gte, lt } from "drizzle-orm";
+import { and, eq, gte, lt, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { calendarEvents, clients, profiles } from "@/lib/db/schema";
+import { calendarEvents, clients, profiles, tasks, projects } from "@/lib/db/schema";
+import { buildCalendarFeed, type CalendarFeedItem } from "@/lib/calendar-feed";
 
-export async function listCalendarEvents(workspaceId: string, rangeStart: Date, rangeEnd: Date) {
-  return db
-    .select({
-      id: calendarEvents.id,
-      title: calendarEvents.title,
-      startAt: calendarEvents.startAt,
-      endAt: calendarEvents.endAt,
-      color: calendarEvents.color,
-      notes: calendarEvents.notes,
-      status: calendarEvents.status,
-      clientId: calendarEvents.clientId,
-      clientName: clients.name,
-      taskId: calendarEvents.taskId,
-      assigneeId: calendarEvents.assigneeId,
-      assigneeName: profiles.name,
-    })
-    .from(calendarEvents)
-    .leftJoin(clients, eq(calendarEvents.clientId, clients.id))
-    .leftJoin(profiles, eq(calendarEvents.assigneeId, profiles.id))
-    .where(and(
-      eq(calendarEvents.workspaceId, workspaceId),
-      gte(calendarEvents.startAt, rangeStart),
-      lt(calendarEvents.startAt, rangeEnd)
-    ))
-    .orderBy(calendarEvents.startAt);
+export type { CalendarFeedItem };
+
+/**
+ * Unified calendar feed: standalone calendar_events plus tasks that carry
+ * scheduling info, normalized into one shape by the pure buildCalendarFeed
+ * (unit-tested). Scheduled tasks are read directly from `tasks` — no
+ * calendar_events row is created for them, so there is exactly one record
+ * per scheduled task, never a duplicate.
+ */
+export async function listCalendarFeed(workspaceId: string, rangeStart: Date, rangeEnd: Date): Promise<CalendarFeedItem[]> {
+  const [events, scheduledTasks] = await Promise.all([
+    db
+      .select({
+        id: calendarEvents.id, title: calendarEvents.title, startAt: calendarEvents.startAt, endAt: calendarEvents.endAt,
+        allDay: calendarEvents.allDay, color: calendarEvents.color, status: calendarEvents.status, eventType: calendarEvents.eventType,
+        clientId: calendarEvents.clientId, clientName: clients.name, assigneeId: calendarEvents.assigneeId, assigneeName: profiles.name,
+        taskId: calendarEvents.taskId,
+      })
+      .from(calendarEvents)
+      .leftJoin(clients, eq(calendarEvents.clientId, clients.id))
+      .leftJoin(profiles, eq(calendarEvents.assigneeId, profiles.id))
+      .where(and(eq(calendarEvents.workspaceId, workspaceId), gte(calendarEvents.startAt, rangeStart), lt(calendarEvents.startAt, rangeEnd))),
+    db
+      .select({
+        id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority,
+        scheduledDate: tasks.scheduledDate, scheduledStartTime: tasks.scheduledStartTime, scheduledEndTime: tasks.scheduledEndTime,
+        allDay: tasks.allDay, calendarVisible: tasks.calendarVisible, clientId: tasks.clientId, clientName: clients.name,
+        assigneeId: tasks.assigneeId, assigneeName: profiles.name, projectName: projects.name,
+      })
+      .from(tasks)
+      .leftJoin(clients, eq(tasks.clientId, clients.id))
+      .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(
+        eq(tasks.workspaceId, workspaceId),
+        eq(tasks.calendarVisible, true),
+        isNotNull(tasks.scheduledDate),
+        gte(tasks.scheduledDate, rangeStart.toISOString().slice(0, 10)),
+        lt(tasks.scheduledDate, rangeEnd.toISOString().slice(0, 10))
+      )),
+  ]);
+
+  return buildCalendarFeed(events, scheduledTasks);
 }
 
-/** Today's events for the dashboard widget — small, targeted query. */
-export async function listTodaySchedule(workspaceId: string) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return listCalendarEvents(workspaceId, start, end);
+/** Today's items for dashboard / My Day widgets — small, targeted query. */
+export async function listTodayFeed(workspaceId: string, start: Date, end: Date) {
+  return listCalendarFeed(workspaceId, start, end);
 }
