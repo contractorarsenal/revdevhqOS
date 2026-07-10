@@ -36,6 +36,13 @@
       "when": 1783613878120,
       "tag": "0004_payment_voiding",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783643399818,
+      "tag": "0005_recurring_expenses_branding",
+      "breakpoints": true
     }
   ]
 }

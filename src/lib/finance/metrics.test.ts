@@ -3,6 +3,7 @@ import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
   isRevenuePayment, recalcInvoiceAfterVoid, paymentAttribution,
+  currentDueMonth, isDueLate,
 } from "./metrics";
 
 describe("normalizeToMonthly", () => {
@@ -145,5 +146,35 @@ describe("paymentAttribution", () => {
   it("without an invoice, request values are used unchanged", () => {
     const r = paymentAttribution(null, { clientId: "client-B", paymentType: "monthly", billingMonth: "2026-08-01" });
     expect(r).toEqual({ clientId: "client-B", paymentType: "monthly", billingMonth: "2026-08-01" });
+  });
+});
+
+describe("recurring subscription due dates", () => {
+  const base = { id: "s1", clientId: "c1", amount: "1000", frequency: "monthly" as const, status: "active", paymentDay: 5, startDate: "2026-01-01" };
+
+  it("owes the current month once the payment day has passed", () => {
+    expect(currentDueMonth(base, new Date("2026-07-10T00:00:00Z"))).toBe("2026-07-01");
+  });
+
+  it("still owes last month before this month's payment day arrives", () => {
+    expect(currentDueMonth(base, new Date("2026-07-03T00:00:00Z"))).toBe("2026-06-01");
+  });
+
+  it("is not due before the subscription started", () => {
+    const sub = { ...base, startDate: "2026-07-01", paymentDay: 20 };
+    expect(currentDueMonth(sub, new Date("2026-07-10T00:00:00Z"))).toBeNull();
+  });
+
+  it("is not due for paused/canceled subscriptions", () => {
+    expect(currentDueMonth({ ...base, status: "paused" }, new Date("2026-07-10T00:00:00Z"))).toBeNull();
+  });
+
+  it("is not due for one-time subscriptions", () => {
+    expect(currentDueMonth({ ...base, frequency: "one_time" }, new Date("2026-07-10T00:00:00Z"))).toBeNull();
+  });
+
+  it("flags late after a 5-day grace period past the due date", () => {
+    expect(isDueLate("2026-07-01", new Date("2026-07-04T00:00:00Z"), 5)).toBe(false);
+    expect(isDueLate("2026-07-01", new Date("2026-07-11T00:00:00Z"), 5)).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import {
   getDashboardMetrics, getMrrTrend, getCollectedByMonth, getRecentActivity, getAttentionQueue,
 } from "@/server/queries/metrics";
 import { listPayments } from "@/server/queries/billing";
+import { listDueSubscriptions } from "@/server/queries/recurring";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
@@ -24,13 +25,14 @@ function greeting() {
 export default async function DashboardPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
-  const [metrics, mrrTrend, collected, activity, attention, payments] = await timed("dashboard queries", () => Promise.all([
+  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId),
     getRecentActivity(wsId),
     getAttentionQueue(wsId),
     listPayments(wsId),
+    listDueSubscriptions(wsId),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
@@ -132,6 +134,26 @@ export default async function DashboardPage() {
               </ul>
             )}
           </section>
+
+          {dueSubs.length > 0 && (
+            <section className="rounded-lg border border-amber-300 bg-amber-50 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
+              <header className="flex items-center border-b border-amber-300/60 px-4 py-2.5 dark:border-amber-900/60">
+                <h2 className="text-[12.5px] font-semibold">Due recurring payments</h2>
+                <span className="ml-auto rounded-full bg-amber-100 px-1.5 text-[10.5px] font-semibold tabular-nums text-amber-800 dark:bg-amber-900 dark:text-amber-300">{dueSubs.length}</span>
+              </header>
+              <ul>
+                {dueSubs.slice(0, 5).map((s) => (
+                  <li key={s.id} className="flex items-center gap-2.5 border-t border-amber-300/40 px-4 py-2.5 first:border-t-0 dark:border-amber-900/40">
+                    <Link href={`/clients/${s.clientId}`} className="min-w-0 flex-1 hover:underline">
+                      <p className="truncate text-[12.5px] font-medium">{s.clientName}</p>
+                      <p className="text-[11px] text-muted-foreground">{s.late ? "late" : "due"}</p>
+                    </Link>
+                    <FinancialAmount value={s.amount} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <section className="rounded-lg border border-border bg-card shadow-sm">
             <header className="flex items-center border-b border-border/60 px-4 py-2.5">

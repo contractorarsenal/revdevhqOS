@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { services, subscriptions, invoices, invoiceItems, payments, clients } from "@/lib/db/schema";
+import { services, subscriptions, invoices, invoiceItems, payments, clients, expenses } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
-import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema } from "@/lib/validation";
-import { roundCents, toAmount, recalcInvoiceAfterVoid, paymentAttribution } from "@/lib/finance/metrics";
+import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema, expenseSchema } from "@/lib/validation";
+import { roundCents, toAmount, recalcInvoiceAfterVoid, paymentAttribution, currentDueMonth, monthKey } from "@/lib/finance/metrics";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");
@@ -97,6 +97,7 @@ export async function createSubscription(input: unknown): Promise<ActionResult> 
         status: data.status,
         startDate: data.startDate,
         nextBillingDate: data.nextBillingDate ?? null,
+        paymentDay: data.paymentDay ?? null,
       })
       .returning();
     await logActivity({
@@ -384,6 +385,151 @@ export async function voidPayment(paymentId: string, reason?: string): Promise<A
       metadata: { amount: Number(payment.amount), reason: reason ?? undefined },
     });
     revalidateBilling(payment.clientId);
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Edits an existing subscription's billing terms (amount, day, status, etc). */
+export async function updateSubscription(subscriptionId: string, input: unknown): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    const data = subscriptionSchema.parse(input);
+    const [existing] = await db
+      .select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, subscriptionId), eq(subscriptions.workspaceId, ctx.workspace.id)))
+      .limit(1);
+    if (!existing) throw new Error("Subscription not found in this workspace.");
+    await db
+      .update(subscriptions)
+      .set({
+        amount: String(data.amount),
+        frequency: data.frequency,
+        status: data.status,
+        startDate: data.startDate,
+        nextBillingDate: data.nextBillingDate ?? null,
+        paymentDay: data.paymentDay ?? null,
+      })
+      .where(eq(subscriptions.id, subscriptionId));
+    revalidateBilling(data.clientId);
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/**
+ * Records the current due month's payment for an active monthly
+ * subscription — the "Mark collected" action. Blocks a duplicate for the
+ * same subscription + billing month (unless the existing one was voided).
+ */
+export async function markSubscriptionCollected(subscriptionId: string): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    const [sub] = await db
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, subscriptionId), eq(subscriptions.workspaceId, ctx.workspace.id)))
+      .limit(1);
+    if (!sub) throw new Error("Subscription not found in this workspace.");
+
+    const dueMonth = currentDueMonth(sub);
+    if (!dueMonth) throw new Error("This subscription has no payment currently due.");
+
+    const [dup] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(
+        eq(payments.subscriptionId, sub.id),
+        eq(payments.billingMonth, dueMonth),
+        ne(payments.status, "voided")
+      ))
+      .limit(1);
+    if (dup) throw new Error("A payment for this billing month has already been recorded.");
+
+    await db.insert(payments).values({
+      workspaceId: ctx.workspace.id,
+      clientId: sub.clientId,
+      subscriptionId: sub.id,
+      amount: sub.amount,
+      status: "succeeded",
+      paymentType: "monthly",
+      billingMonth: dueMonth,
+      method: "manual",
+      paidAt: new Date(),
+    });
+
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "payment.recorded", entityType: "payment", clientId: sub.clientId,
+      metadata: { amount: Number(sub.amount), recurring: true, billingMonth: dueMonth },
+    });
+    revalidateBilling(sub.clientId);
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/* ===== expenses ===== */
+export async function createExpense(input: unknown): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    const data = expenseSchema.parse(input);
+    await db.insert(expenses).values({
+      workspaceId: ctx.workspace.id,
+      name: data.name,
+      category: data.category,
+      amount: String(data.amount),
+      expenseDate: data.expenseDate,
+      frequency: data.frequency,
+      vendor: data.vendor ?? null,
+      notes: data.notes ?? null,
+      createdBy: ctx.user.id,
+    });
+    revalidatePath("/expenses");
+    revalidatePath("/dashboard");
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function updateExpense(expenseId: string, input: unknown): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    const data = expenseSchema.parse(input);
+    await db
+      .update(expenses)
+      .set({
+        name: data.name,
+        category: data.category,
+        amount: String(data.amount),
+        expenseDate: data.expenseDate,
+        frequency: data.frequency,
+        vendor: data.vendor ?? null,
+        notes: data.notes ?? null,
+      })
+      .where(and(eq(expenses.id, expenseId), eq(expenses.workspaceId, ctx.workspace.id)));
+    revalidatePath("/expenses");
+    revalidatePath("/dashboard");
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function archiveExpense(expenseId: string): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    await db
+      .update(expenses)
+      .set({ status: "archived", archivedAt: new Date() })
+      .where(and(eq(expenses.id, expenseId), eq(expenses.workspaceId, ctx.workspace.id)));
+    revalidatePath("/expenses");
+    revalidatePath("/dashboard");
     return { ok: true };
   } catch (err) {
     return actionError(err);

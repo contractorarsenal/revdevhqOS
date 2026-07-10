@@ -108,6 +108,38 @@ export const subscriptionSchema = z.object({
   status: z.enum(["trial", "active", "past_due", "paused", "canceled", "completed"]).default("active"),
   startDate: z.string().min(1, "Start date is required"),
   nextBillingDate: optionalDate,
+  paymentDay: z
+    .union([z.literal(""), z.coerce.number().int().min(1).max(28)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+});
+
+export const expenseSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
+  category: z.enum(["software", "office_rent", "payroll", "contractors", "ads", "tools", "misc"]).default("misc"),
+  amount: moneyField,
+  expenseDate: z.string().min(1, "Date is required"),
+  frequency: z.enum(["one_time", "monthly"]).default("one_time"),
+  vendor: optionalTrimmed,
+  notes: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+});
+
+export const workspaceBrandingSchema = z.object({
+  businessName: optionalTrimmed,
+  primaryColor: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #E11D48")])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  accentColor: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #E11D48")])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  businessEmail: optionalTrimmed,
+  businessPhone: optionalTrimmed,
+  website: optionalTrimmed,
 });
 
 export const invoiceItemSchema = z.object({

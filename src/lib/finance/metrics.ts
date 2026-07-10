@@ -162,3 +162,47 @@ export function paymentAttribution(
     billingMonth: input.billingMonth ?? null,
   };
 }
+
+/* ========== recurring subscription collection ========== */
+
+export type SubscriptionDue = {
+  id: string;
+  clientId: string;
+  amount: string | number;
+  frequency: BillingFrequency;
+  status: string;
+  paymentDay: number | null;
+  startDate: string;
+};
+
+/** First-of-month date string (YYYY-MM-01) for a given Date, in UTC terms. */
+export function monthKey(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/**
+ * The billing month a monthly subscription currently owes for, or null if
+ * it isn't due yet (before its payment day in the first month) or isn't a
+ * collectible monthly subscription.
+ */
+export function currentDueMonth(sub: SubscriptionDue, today: Date = new Date()): string | null {
+  if (sub.frequency !== "monthly" || sub.status !== "active") return null;
+  const day = sub.paymentDay ?? 1;
+  const start = new Date(sub.startDate + "T00:00:00Z");
+  const startMonth = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1);
+  const thisMonth = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1);
+  // Whichever cycle is currently owed: this month once the payment day has
+  // arrived, otherwise still last month's cycle.
+  const candidate = today.getUTCDate() >= day ? thisMonth : Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1);
+  // Never owe for a cycle before the subscription started.
+  if (candidate < startMonth) return null;
+  return monthKey(new Date(candidate));
+}
+
+export function isDueLate(dueMonth: string, today: Date, paymentDay: number | null): boolean {
+  const [y, m] = dueMonth.split("-").map(Number);
+  const dueDate = new Date(Date.UTC(y, m - 1, paymentDay ?? 1));
+  const graceEnd = new Date(dueDate);
+  graceEnd.setUTCDate(graceEnd.getUTCDate() + 5);
+  return today > graceEnd;
+}

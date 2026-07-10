@@ -10,7 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { requireUser, ACTIVE_WORKSPACE_COOKIE, assertMembership } from "@/lib/auth/session";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
-import { workspaceSchema } from "@/lib/validation";
+import { workspaceSchema, workspaceBrandingSchema } from "@/lib/validation";
 
 const DEFAULT_STAGES = [
   { name: "New Lead", probability: 10 },
@@ -99,6 +99,29 @@ export async function setActiveWorkspace(workspaceId: string): Promise<ActionRes
     await assertMembership(user.id, workspaceId);
     const cookieStore = await cookies();
     cookieStore.set(ACTIVE_WORKSPACE_COOKIE, workspaceId, { path: "/", httpOnly: true, sameSite: "lax" });
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function updateWorkspaceBranding(input: unknown): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("admin");
+    const data = workspaceBrandingSchema.parse(input);
+    await db
+      .update(workspaces)
+      .set({
+        businessName: data.businessName ?? null,
+        primaryColor: data.primaryColor ?? null,
+        accentColor: data.accentColor ?? null,
+        businessEmail: data.businessEmail ?? null,
+        businessPhone: data.businessPhone ?? null,
+        website: data.website ?? null,
+      })
+      .where(eq(workspaces.id, ctx.workspace.id));
+    revalidatePath("/settings");
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (err) {

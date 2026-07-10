@@ -40,6 +40,12 @@ export const workspaces = pgTable("workspaces", {
   slug: text("slug").notNull().unique(),
   timezone: text("timezone").notNull().default("UTC"),
   currency: text("currency").notNull().default("USD"),
+  businessName: text("business_name"),
+  primaryColor: text("primary_color"),
+  accentColor: text("accent_color"),
+  businessEmail: text("business_email"),
+  businessPhone: text("business_phone"),
+  website: text("website"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -170,6 +176,7 @@ export const subscriptions = pgTable("subscriptions", {
   status: subscriptionStatus("status").notNull().default("active"),
   startDate: date("start_date").notNull(),
   nextBillingDate: date("next_billing_date"),
+  paymentDay: integer("payment_day"),
   pausedAt: timestamp("paused_at", { withTimezone: true }),
   canceledAt: timestamp("canceled_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -218,6 +225,7 @@ export const payments = pgTable("payments", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  subscriptionId: uuid("subscription_id").references(() => subscriptions.id, { onDelete: "set null" }),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   status: paymentStatus("status").notNull().default("succeeded"),
   paymentType: billingFrequency("payment_type").notNull().default("one_time"),
@@ -233,6 +241,33 @@ export const payments = pgTable("payments", {
   index("payments_workspace_paid_idx").on(t.workspaceId, t.paidAt),
   index("payments_workspace_billing_month_idx").on(t.workspaceId, t.billingMonth),
   index("payments_invoice_idx").on(t.invoiceId),
+  index("payments_subscription_month_idx").on(t.subscriptionId, t.billingMonth),
+]);
+
+export const expenseStatus = pgEnum("expense_status", ["active", "archived"]);
+export const expenseCategory = pgEnum("expense_category", [
+  "software", "office_rent", "payroll", "contractors", "ads", "tools", "misc",
+]);
+
+export const expenses = pgTable("expenses", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  category: expenseCategory("category").notNull().default("misc"),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  expenseDate: date("expense_date").notNull(),
+  frequency: billingFrequency("frequency").notNull().default("one_time"),
+  vendor: text("vendor"),
+  notes: text("notes"),
+  status: expenseStatus("status").notNull().default("active"),
+  createdBy: uuid("created_by").references(() => profiles.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+}, (t) => [
+  index("expenses_workspace_date_idx").on(t.workspaceId, t.expenseDate),
+  index("expenses_workspace_category_idx").on(t.workspaceId, t.category),
+  index("expenses_workspace_status_idx").on(t.workspaceId, t.status),
 ]);
 
 /* ========== operations ========== */
