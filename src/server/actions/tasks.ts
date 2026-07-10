@@ -7,6 +7,7 @@ import { tasks } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { taskSchema } from "@/lib/validation";
+import { assertWorkspaceRelations } from "@/server/workspace-guards";
 
 async function ownedTask(workspaceId: string, taskId: string) {
   const [row] = await db
@@ -42,6 +43,7 @@ export async function createTask(input: unknown): Promise<ActionResult> {
   try {
     const ctx = await authorize("member");
     const data = taskSchema.parse(input);
+    await assertWorkspaceRelations(ctx.workspace.id, data);
     await db.insert(tasks).values({
       workspaceId: ctx.workspace.id,
       ...taskValues(data),
@@ -59,6 +61,7 @@ export async function updateTask(taskId: string, input: unknown): Promise<Action
     const ctx = await authorize("member");
     const existing = await ownedTask(ctx.workspace.id, taskId);
     const data = taskSchema.parse(input);
+    await assertWorkspaceRelations(ctx.workspace.id, data);
     await db
       .update(tasks)
       .set({

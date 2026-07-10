@@ -9,6 +9,7 @@ import {
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { stageSchema, opportunitySchema, convertOpportunitySchema } from "@/lib/validation";
+import { assertWorkspaceRelations } from "@/server/workspace-guards";
 
 async function ownedStage(workspaceId: string, stageId: string) {
   const [row] = await db
@@ -114,6 +115,7 @@ export async function createOpportunity(input: unknown): Promise<ActionResult> {
     const ctx = await authorize("member");
     const data = opportunitySchema.parse(input);
     await ownedStage(ctx.workspace.id, data.stageId);
+    await assertWorkspaceRelations(ctx.workspace.id, data);
     const [row] = await db
       .insert(opportunities)
       .values({ workspaceId: ctx.workspace.id, ...oppValues(data), ownerId: data.ownerId ?? ctx.user.id })
@@ -136,6 +138,7 @@ export async function updateOpportunity(oppId: string, input: unknown): Promise<
     await ownedOpportunity(ctx.workspace.id, oppId);
     const data = opportunitySchema.parse(input);
     await ownedStage(ctx.workspace.id, data.stageId);
+    await assertWorkspaceRelations(ctx.workspace.id, data);
     await db
       .update(opportunities)
       .set(oppValues(data))

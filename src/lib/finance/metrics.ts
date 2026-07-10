@@ -138,3 +138,27 @@ export function recalcInvoiceAfterVoid(invoice: {
   if (paidInFull) status = "paid";
   return { amountPaid: newPaid, status };
 }
+
+/**
+ * Resolves who a payment belongs to and its billing metadata.
+ * When an invoice is attached, the invoice is authoritative: the payment is
+ * attributed to the invoice's client (a mismatched request clientId is
+ * ignored) and inherits the invoice's billing type and month.
+ */
+export function paymentAttribution(
+  invoice: { clientId: string; billingFrequency: string; billingMonth: string | null } | null,
+  input: { clientId?: string | null; paymentType: string; billingMonth?: string | null }
+): { clientId: string | null; paymentType: string; billingMonth: string | null } {
+  if (invoice) {
+    return {
+      clientId: invoice.clientId,
+      paymentType: invoice.billingFrequency === "monthly" ? "monthly" : "one_time",
+      billingMonth: invoice.billingMonth ?? input.billingMonth ?? null,
+    };
+  }
+  return {
+    clientId: input.clientId ?? null,
+    paymentType: input.paymentType,
+    billingMonth: input.billingMonth ?? null,
+  };
+}

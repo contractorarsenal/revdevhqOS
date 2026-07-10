@@ -7,7 +7,7 @@ import { services, subscriptions, invoices, invoiceItems, payments, clients } fr
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema } from "@/lib/validation";
-import { roundCents, toAmount, recalcInvoiceAfterVoid } from "@/lib/finance/metrics";
+import { roundCents, toAmount, recalcInvoiceAfterVoid, paymentAttribution } from "@/lib/finance/metrics";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");
@@ -243,6 +243,8 @@ export async function markInvoicePaid(invoiceId: string): Promise<ActionResult> 
         invoiceId: inv.id,
         amount: String(balance),
         status: "succeeded",
+        paymentType: inv.billingFrequency === "monthly" ? "monthly" : "one_time",
+        billingMonth: inv.billingMonth ?? `${new Date().toISOString().slice(0, 7)}-01`,
         method: "manual",
         paidAt: new Date(),
       });
@@ -288,15 +290,26 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
       if (!client) throw new Error("Client not found in this workspace.");
     }
 
+    // The invoice is authoritative for attribution: payments applied to an
+    // invoice always belong to the invoice's client and inherit its billing
+    // metadata — a mismatched request clientId cannot shift revenue between
+    // clients while reducing another client's invoice balance.
+    const attribution = paymentAttribution(invoice, {
+      clientId: data.clientId,
+      paymentType: data.paymentType,
+      billingMonth: data.billingMonth ? `${data.billingMonth}-01` : null,
+    });
+    const billingMonth = attribution.billingMonth ?? `${data.paidAt.slice(0, 7)}-01`;
+
     await db.transaction(async (tx) => {
       await tx.insert(payments).values({
         workspaceId: ctx.workspace.id,
-        clientId: data.clientId ?? invoice?.clientId ?? null,
+        clientId: attribution.clientId,
         invoiceId: data.invoiceId ?? null,
         amount: String(data.amount),
         status: data.status,
-        paymentType: data.paymentType,
-        billingMonth: data.billingMonth ? `${data.billingMonth}-01` : `${data.paidAt.slice(0, 7)}-01`,
+        paymentType: attribution.paymentType as typeof data.paymentType,
+        billingMonth,
         method: data.method ?? null,
         reference: data.reference ?? null,
         paidAt: new Date(data.paidAt),
@@ -314,10 +327,10 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
     await logActivity({
       workspaceId: ctx.workspace.id, actorId: ctx.user.id,
       action: "payment.recorded", entityType: "payment",
-      clientId: data.clientId ?? invoice?.clientId ?? null,
+      clientId: attribution.clientId,
       metadata: { amount: data.amount, method: data.method ?? undefined },
     });
-    revalidateBilling(data.clientId ?? invoice?.clientId);
+    revalidateBilling(attribution.clientId);
     return { ok: true };
   } catch (err) {
     return actionError(err);
