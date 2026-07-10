@@ -8,7 +8,7 @@ import { BillingView } from "@/features/billing/billing-view";
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; new?: string }>;
+  searchParams: Promise<{ tab?: string; new?: string; open?: string }>;
 }) {
   const ctx = await requireWorkspace();
   const [services, subscriptions, invoices, payments, clients, metrics] = await timed("billing queries", () => Promise.all([
@@ -30,6 +30,7 @@ export default async function BillingPage({
       metrics={metrics}
       initialTab={params.tab}
       openNew={params.new === "1"}
+      highlightInvoiceId={params.open}
     />
   );
 }

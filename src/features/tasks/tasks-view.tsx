@@ -25,6 +25,14 @@ type ViewMode = "list" | "board" | "today";
 const BOARD_STATUSES = ["todo", "in_progress", "waiting", "completed"] as const;
 const STATUS_LABEL: Record<string, string> = { todo: "To do", in_progress: "In progress", waiting: "Waiting", completed: "Completed" };
 
+/** Reflects the active view in the URL without a Next.js navigation, mirroring the Calendar page's pattern. */
+function syncUrl(view: ViewMode) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", view);
+  window.history.replaceState(null, "", url.toString());
+}
+
 function TaskRowItem({
   task, onToggle, onEdit, onDelete, showOverdue,
 }: { task: TaskRow; onToggle: (t: TaskRow, v: boolean) => void; onEdit: (t: TaskRow) => void; onDelete: (t: TaskRow) => void; showOverdue?: boolean }) {
@@ -90,13 +98,24 @@ function BoardColumn({ status, tasks, onEdit }: { status: string; tasks: TaskRow
 }
 
 export function TasksView({
-  tasks, currentUserId, options, openNew, today,
-}: { tasks: TaskRow[]; currentUserId: string; options: RelatedOptions; openNew: boolean; today: string }) {
+  tasks, currentUserId, options, openNew, today, initialView, openTaskId,
+}: {
+  tasks: TaskRow[]; currentUserId: string; options: RelatedOptions; openNew: boolean; today: string;
+  initialView?: ViewMode; openTaskId?: string;
+}) {
   const router = useRouter();
+  // Deep link from Dashboard ("open this specific task") — computed once at
+  // mount, same idiom as the existing openNew prop, so no effect is needed.
+  const deepLinkedTask = openTaskId ? tasks.find((t) => t.id === openTaskId) : undefined;
   const [scope, setScope] = useState<"mine" | "team">("mine");
-  const [view, setView] = useState<ViewMode>("list");
-  const [formOpen, setFormOpen] = useState(openNew);
-  const [editing, setEditing] = useState<TaskRow | null>(null);
+  const [view, setView] = useState<ViewMode>(initialView ?? "board");
+  const [formOpen, setFormOpen] = useState(openNew || Boolean(deepLinkedTask));
+  const [editing, setEditing] = useState<TaskRow | null>(() => deepLinkedTask ?? null);
+
+  function changeView(v: ViewMode) {
+    setView(v);
+    syncUrl(v);
+  }
   const [projectFilter, setProjectFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -172,7 +191,7 @@ export function TasksView({
       <PageHeader title="Tasks" description="Your work — organized by project, scheduled on your calendar.">
         <div className="flex rounded-md bg-muted p-0.5">
           {(["list", "board", "today"] as const).map((v) => (
-            <button key={v} onClick={() => setView(v)} className={cn("rounded px-2.5 py-1 text-xs font-semibold capitalize text-muted-foreground", view === v && "bg-card text-foreground shadow-sm")}>
+            <button key={v} onClick={() => changeView(v)} className={cn("rounded px-2.5 py-1 text-xs font-semibold capitalize text-muted-foreground", view === v && "bg-card text-foreground shadow-sm")}>
               {v === "today" ? "My Day" : v}
             </button>
           ))}

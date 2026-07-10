@@ -3,6 +3,7 @@ import { and, eq, gte, lt, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { calendarEvents, clients, profiles, tasks, projects } from "@/lib/db/schema";
 import { buildCalendarFeed, type CalendarFeedItem } from "@/lib/calendar-feed";
+import { formatInTimezone } from "@/lib/date-tz";
 
 export type { CalendarFeedItem };
 
@@ -13,7 +14,13 @@ export type { CalendarFeedItem };
  * calendar_events row is created for them, so there is exactly one record
  * per scheduled task, never a duplicate.
  */
-export async function listCalendarFeed(workspaceId: string, rangeStart: Date, rangeEnd: Date): Promise<CalendarFeedItem[]> {
+export async function listCalendarFeed(workspaceId: string, rangeStart: Date, rangeEnd: Date, timezone: string): Promise<CalendarFeedItem[]> {
+  // Task scheduledDate is a plain workspace-local date (no timezone of its
+  // own) — bound it against the *workspace-local* calendar dates of the
+  // range, not the UTC calendar date of the range instants (which can be a
+  // different day depending on the offset's sign).
+  const rangeStartLocalDate = formatInTimezone(rangeStart, timezone).date;
+  const rangeEndLocalDate = formatInTimezone(rangeEnd, timezone).date;
   const [events, scheduledTasks] = await Promise.all([
     db
       .select({
@@ -41,15 +48,15 @@ export async function listCalendarFeed(workspaceId: string, rangeStart: Date, ra
         eq(tasks.workspaceId, workspaceId),
         eq(tasks.calendarVisible, true),
         isNotNull(tasks.scheduledDate),
-        gte(tasks.scheduledDate, rangeStart.toISOString().slice(0, 10)),
-        lt(tasks.scheduledDate, rangeEnd.toISOString().slice(0, 10))
+        gte(tasks.scheduledDate, rangeStartLocalDate),
+        lt(tasks.scheduledDate, rangeEndLocalDate)
       )),
   ]);
 
-  return buildCalendarFeed(events, scheduledTasks);
+  return buildCalendarFeed(events, scheduledTasks, timezone);
 }
 
 /** Today's items for dashboard / My Day widgets — small, targeted query. */
-export async function listTodayFeed(workspaceId: string, start: Date, end: Date) {
-  return listCalendarFeed(workspaceId, start, end);
+export async function listTodayFeed(workspaceId: string, start: Date, end: Date, timezone: string) {
+  return listCalendarFeed(workspaceId, start, end, timezone);
 }

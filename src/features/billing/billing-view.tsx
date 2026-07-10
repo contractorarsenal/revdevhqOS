@@ -74,15 +74,15 @@ type Metrics = {
 };
 
 export function BillingView({
-  services, subscriptions, invoices, payments, clients, metrics, initialTab, openNew,
+  services, subscriptions, invoices, payments, clients, metrics, initialTab, openNew, highlightInvoiceId,
 }: {
   services: any[]; subscriptions: any[]; invoices: any[]; payments: any[];
   clients: { id: string; name: string }[]; metrics: Metrics;
-  initialTab?: string; openNew?: boolean;
+  initialTab?: string; openNew?: boolean; highlightInvoiceId?: string;
 }) {
   const router = useRouter();
   const validTabs = ["subscriptions", "invoices", "payments", "services"];
-  const tab = validTabs.includes(initialTab ?? "") ? initialTab! : "subscriptions";
+  const tab = highlightInvoiceId ? "invoices" : validTabs.includes(initialTab ?? "") ? initialTab! : "subscriptions";
   const [serviceForm, setServiceForm] = useState(false);
   const [editService, setEditService] = useState<any>(null);
   const [subForm, setSubForm] = useState(Boolean(openNew) && tab === "subscriptions");
@@ -350,7 +350,7 @@ export function BillingView({
             <EmptyState icon={FileText} title="No invoices yet" description="Invoices are amounts requested from clients."
               action={<Button size="sm" onClick={() => setInvoiceForm(true)}><Plus className="size-3.5" /> Create invoice</Button>} />
           ) : (
-            <DataTable columns={invCols} data={filteredInvoices} searchPlaceholder="Search invoices…"
+            <DataTable columns={invCols} data={filteredInvoices} searchPlaceholder="Search invoices…" highlightId={highlightInvoiceId}
               toolbar={
                 <>
                   <BillingFilters type={invType} onType={setInvType} month={invMonth} onMonth={setInvMonth} months={invMonths} total={filteredInvoiced} totalLabel="Invoiced" />

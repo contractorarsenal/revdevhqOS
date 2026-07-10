@@ -3,7 +3,7 @@ import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
   isRevenuePayment, recalcInvoiceAfterVoid, paymentAttribution,
-  currentDueMonth, isDueLate,
+  currentDueMonth, isDueLate, nextPaymentFor,
 } from "./metrics";
 
 describe("normalizeToMonthly", () => {
@@ -176,5 +176,46 @@ describe("recurring subscription due dates", () => {
   it("flags late after a 5-day grace period past the due date", () => {
     expect(isDueLate("2026-07-01", new Date("2026-07-04T00:00:00Z"), 5)).toBe(false);
     expect(isDueLate("2026-07-01", new Date("2026-07-11T00:00:00Z"), 5)).toBe(true);
+  });
+});
+
+describe("nextPaymentFor — the Next Payment display bug", () => {
+  const base = { id: "s1", clientId: "c1", amount: "1000", frequency: "monthly" as const, status: "active", paymentDay: 15, startDate: "2026-01-01" };
+  const neverCollected = () => false;
+
+  it("shows this month's payment day once it's due and not yet collected", () => {
+    const info = nextPaymentFor(base, neverCollected, new Date("2026-07-20T00:00:00Z"));
+    expect(info).toEqual({ dueDate: "2026-07-15", late: false, collected: false });
+  });
+
+  it("advances to next month once the current cycle has been collected — never re-shows a collected period", () => {
+    const collectedJuly = (month: string) => month === "2026-07-01";
+    const info = nextPaymentFor(base, collectedJuly, new Date("2026-07-20T00:00:00Z"));
+    expect(info).toEqual({ dueDate: "2026-08-15", late: false, collected: true });
+  });
+
+  it("flags overdue once past the grace period, without inventing a different date", () => {
+    const info = nextPaymentFor(base, neverCollected, new Date("2026-07-25T00:00:00Z"));
+    expect(info).toEqual({ dueDate: "2026-07-15", late: true, collected: false });
+  });
+
+  it("before the first payment day ever arrives, projects the subscription's own start-month payment day", () => {
+    const sub = { ...base, startDate: "2026-07-01" };
+    const info = nextPaymentFor(sub, neverCollected, new Date("2026-07-05T00:00:00Z"));
+    expect(info).toEqual({ dueDate: "2026-07-15", late: false, collected: false });
+  });
+
+  it("clamps a payment day past the end of a short month instead of rolling into the next month", () => {
+    // Payment day 31, projected onto February (28 days in 2026): still owes
+    // February's cycle (today's date-of-month 5 hasn't reached day 31 yet).
+    const sub = { ...base, paymentDay: 31, startDate: "2026-01-01" };
+    const info = nextPaymentFor(sub, neverCollected, new Date("2026-03-05T00:00:00Z"));
+    expect(info?.dueDate).toBe("2026-02-28");
+  });
+
+  it("returns null (empty state) for a paused, canceled, or non-monthly subscription — never invents a date", () => {
+    expect(nextPaymentFor({ ...base, status: "paused" }, neverCollected)).toBeNull();
+    expect(nextPaymentFor({ ...base, status: "canceled" }, neverCollected)).toBeNull();
+    expect(nextPaymentFor({ ...base, frequency: "yearly" }, neverCollected)).toBeNull();
   });
 });

@@ -206,3 +206,43 @@ export function isDueLate(dueMonth: string, today: Date, paymentDay: number | nu
   graceEnd.setUTCDate(graceEnd.getUTCDate() + 5);
   return today > graceEnd;
 }
+
+function daysInMonth(year: number, month1: number): number {
+  return new Date(Date.UTC(year, month1, 0)).getUTCDate();
+}
+
+/** "YYYY-MM-DD" for a payment day within a given month, clamped to that month's length (e.g. day 31 in February). */
+function dateOnPaymentDay(year: number, month1: number, day: number): string {
+  const clamped = Math.min(day, daysInMonth(year, month1));
+  return `${year}-${String(month1).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
+}
+
+export type NextPaymentInfo = { dueDate: string; late: boolean; collected: boolean };
+
+/**
+ * The date to show as "Next payment" for an active monthly subscription.
+ * Shows the currently-owed cycle's payment day; once that cycle has been
+ * collected, advances to the following month's payment day instead of
+ * disappearing or re-showing the period that was already collected.
+ * Returns null when there is no active monthly subscription/payment day to
+ * project from (caller should render an explicit empty state, not a guess).
+ */
+export function nextPaymentFor(
+  sub: SubscriptionDue,
+  isCollected: (billingMonth: string) => boolean,
+  today: Date = new Date()
+): NextPaymentInfo | null {
+  if (sub.status !== "active" || sub.frequency !== "monthly") return null;
+  const day = sub.paymentDay ?? 1;
+  const dueMonth = currentDueMonth(sub, today);
+  if (!dueMonth) {
+    const start = new Date(sub.startDate + "T00:00:00Z");
+    return { dueDate: dateOnPaymentDay(start.getUTCFullYear(), start.getUTCMonth() + 1, day), late: false, collected: false };
+  }
+  const [y, m] = dueMonth.split("-").map(Number);
+  if (!isCollected(dueMonth)) {
+    return { dueDate: dateOnPaymentDay(y, m, day), late: isDueLate(dueMonth, today, sub.paymentDay), collected: false };
+  }
+  const nextMonth = new Date(Date.UTC(y, m, 1));
+  return { dueDate: dateOnPaymentDay(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth() + 1, day), late: false, collected: true };
+}

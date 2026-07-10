@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { invoiceBalance, isPastDue } from "@/lib/finance/metrics";
+import { formatFullDate } from "@/lib/date-tz";
 import { archiveClient, addContact, startOnboarding, toggleOnboardingStep } from "@/server/actions/clients";
 import { markSubscriptionCollected } from "@/server/actions/billing";
 import { addNote } from "@/server/actions/notes";
@@ -372,9 +373,17 @@ export function ClientDetailView({
               {[
                 ["Current MRR", <FinancialAmount key="m" value={detail.mrr} suffix="/mo" />],
                 ["Lifetime collected", <FinancialAmount key="l" value={detail.lifetimeCollected} />],
-                ...(billing.duePayments.length > 0
-                  ? [["Next payment", <span key="np" className={billing.duePayments[0].late ? "font-semibold text-destructive" : ""}>{billing.duePayments[0].late ? "Due now (late)" : "Due now"}</span>]]
-                  : []),
+                [
+                  "Next payment",
+                  billing.nextPayment ? (
+                    <span key="np" className={billing.nextPayment.late ? "font-semibold text-destructive" : ""}>
+                      {formatFullDate(billing.nextPayment.dueDate)}
+                      {billing.nextPayment.late ? " — overdue" : ""}
+                    </span>
+                  ) : (
+                    <span key="np" className="text-muted-foreground">No active subscription</span>
+                  ),
+                ],
                 ["Outstanding balance", <FinancialAmount key="o" value={outstanding} className={outstanding > 0 ? "text-destructive" : ""} />],
                 ["Open tasks", <span key="t" className="tabular-nums font-semibold">{openTasks.length}</span>],
                 ["Payment email", client.email ?? "—"],

@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { subscriptions, services, invoices, payments } from "@/lib/db/schema";
-import { calculateMrr, currentDueMonth, isDueLate } from "@/lib/finance/metrics";
+import { calculateMrr, currentDueMonth, isDueLate, nextPaymentFor } from "@/lib/finance/metrics";
 
 /** Client-scoped billing summary for the client detail page — avoids
  * loading the whole workspace's invoices/payments just to show one client. */
@@ -40,6 +40,20 @@ export async function getClientBillingSummary(workspaceId: string, clientId: str
     // "Due" means action is needed — once collected, it drops off this list.
     .filter((d) => !d.collected);
 
+  // "Next payment" projects forward across every active monthly subscription
+  // — once the currently-owed cycle is collected it advances to the
+  // following month rather than disappearing or re-showing a paid period.
+  const nextPayments = subs
+    .map((s) => {
+      const info = nextPaymentFor(s, (billingMonth) =>
+        clientPayments.some((p) => p.subscriptionId === s.id && p.billingMonth === billingMonth && p.status !== "voided"),
+        today
+      );
+      return info ? { subscriptionId: s.id, serviceName: s.serviceName, ...info } : null;
+    })
+    .filter((n): n is NonNullable<typeof n> => n !== null)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
   return {
     subscriptions: subs,
     invoices: clientInvoices,
@@ -47,5 +61,6 @@ export async function getClientBillingSummary(workspaceId: string, clientId: str
     mrr: calculateMrr(subs),
     lifetimeCollected: clientPayments.filter((p) => p.status === "succeeded").reduce((sum, p) => sum + Number(p.amount), 0),
     duePayments: due,
+    nextPayment: nextPayments[0] ?? null,
   };
 }

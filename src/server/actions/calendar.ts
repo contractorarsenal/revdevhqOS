@@ -7,11 +7,23 @@ import { calendarEvents } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { assertWorkspaceClient, assertWorkspaceTask, assertWorkspaceMember } from "@/server/workspace-guards";
 import { calendarEventSchema } from "@/lib/validation";
+import { zonedTimeToUtc } from "@/lib/date-tz";
 import { logActivity } from "@/server/activity";
 
-function toRange(date: string, startTime: string, endTime: string) {
-  const startAt = new Date(`${date}T${startTime}`);
-  const endAt = new Date(`${date}T${endTime}`);
+/**
+ * Converts the event's local wall-clock date/time into the correct UTC
+ * instants, using the workspace's timezone — never the server process's
+ * own timezone (which is UTC in production and would silently corrupt
+ * every event's time by the workspace's UTC offset).
+ */
+function toRange(date: string, startTime: string, endTime: string, timezone: string, allDay: boolean) {
+  if (allDay) {
+    const startAt = zonedTimeToUtc(date, "00:00", timezone);
+    const endAt = zonedTimeToUtc(date, "23:59", timezone);
+    return { startAt, endAt };
+  }
+  const startAt = zonedTimeToUtc(date, startTime, timezone);
+  const endAt = zonedTimeToUtc(date, endTime, timezone);
   return { startAt, endAt };
 }
 
@@ -32,7 +44,7 @@ export async function createCalendarEvent(input: unknown): Promise<ActionResult<
     await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     await assertWorkspaceTask(ctx.workspace.id, data.taskId);
     await assertWorkspaceMember(ctx.workspace.id, data.assigneeId);
-    const { startAt, endAt } = toRange(data.date, data.startTime, data.endTime);
+    const { startAt, endAt } = toRange(data.date, data.startTime, data.endTime, ctx.workspace.timezone, data.allDay);
     if (endAt <= startAt) throw new Error("End time must be after start time.");
 
     const [row] = await db
@@ -44,6 +56,7 @@ export async function createCalendarEvent(input: unknown): Promise<ActionResult<
         taskId: data.taskId ?? null,
         assigneeId: data.assigneeId ?? null,
         startAt, endAt,
+        allDay: data.allDay,
         color: data.color ?? null,
         notes: data.notes ?? null,
         status: data.status,
@@ -73,7 +86,7 @@ export async function updateCalendarEvent(eventId: string, input: unknown): Prom
     await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     await assertWorkspaceTask(ctx.workspace.id, data.taskId);
     await assertWorkspaceMember(ctx.workspace.id, data.assigneeId);
-    const { startAt, endAt } = toRange(data.date, data.startTime, data.endTime);
+    const { startAt, endAt } = toRange(data.date, data.startTime, data.endTime, ctx.workspace.timezone, data.allDay);
     if (endAt <= startAt) throw new Error("End time must be after start time.");
 
     await db
@@ -84,6 +97,7 @@ export async function updateCalendarEvent(eventId: string, input: unknown): Prom
         taskId: data.taskId ?? null,
         assigneeId: data.assigneeId ?? null,
         startAt, endAt,
+        allDay: data.allDay,
         color: data.color ?? null,
         notes: data.notes ?? null,
         status: data.status,

@@ -176,7 +176,7 @@ export async function getAttentionQueue(workspaceId: string) {
     db
       .select({
         id: invoices.id, number: invoices.number, dueDate: invoices.dueDate,
-        total: invoices.total, amountPaid: invoices.amountPaid, clientName: clients.name,
+        total: invoices.total, amountPaid: invoices.amountPaid, clientName: clients.name, clientId: invoices.clientId,
       })
       .from(invoices)
       .innerJoin(clients, eq(invoices.clientId, clients.id))
@@ -189,7 +189,7 @@ export async function getAttentionQueue(workspaceId: string) {
     db
       .select({
         id: subscriptions.id, nextBillingDate: subscriptions.nextBillingDate,
-        amount: subscriptions.amount, frequency: subscriptions.frequency, clientName: clients.name,
+        amount: subscriptions.amount, frequency: subscriptions.frequency, clientName: clients.name, clientId: subscriptions.clientId,
       })
       .from(subscriptions)
       .innerJoin(clients, eq(subscriptions.clientId, clients.id))

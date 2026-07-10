@@ -6,12 +6,13 @@ import { listLeads } from "@/server/queries/leads";
 import { listPipeline } from "@/server/queries/pipeline";
 import { listProjects } from "@/server/queries/projects";
 import { todayInTimezone } from "@/lib/date-tz";
+import { resolveTasksView } from "@/lib/view-defaults";
 import { TasksView } from "@/features/tasks/tasks-view";
 
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string }>;
+  searchParams: Promise<{ new?: string; view?: string; open?: string }>;
 }) {
   const ctx = await requireWorkspace();
   const [tasks, members, clients, leads, pipeline, projects] = await Promise.all([
@@ -23,6 +24,7 @@ export default async function TasksPage({
     listProjects(ctx.workspace.id),
   ]);
   const params = await searchParams;
+  const initialView = resolveTasksView(params.view);
   return (
     <TasksView
       tasks={tasks}
@@ -36,6 +38,8 @@ export default async function TasksPage({
         projects: projects.map((p) => ({ id: p.id, name: p.name })),
       }}
       openNew={params.new === "1"}
+      initialView={initialView}
+      openTaskId={params.open}
     />
   );
 }

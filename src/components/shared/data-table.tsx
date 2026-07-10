@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type ColumnDef, flexRender, getCoreRowModel, getFilteredRowModel,
   getPaginationRowModel, getSortedRowModel, type SortingState, useReactTable,
@@ -9,6 +9,7 @@ import { Search, ChevronLeft, ChevronRight, ArrowUpDown } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export function sortableHeader(label: string) {
   // eslint-disable-next-line react/display-name, @typescript-eslint/no-explicit-any
@@ -22,8 +23,8 @@ export function sortableHeader(label: string) {
   );
 }
 
-export function DataTable<TData, TValue>({
-  columns, data, searchPlaceholder = "Search…", onRowClick, toolbar, emptyMessage = "No records yet.",
+export function DataTable<TData extends { id: string }, TValue>({
+  columns, data, searchPlaceholder = "Search…", onRowClick, toolbar, emptyMessage = "No records yet.", highlightId,
 }: {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
@@ -31,9 +32,16 @@ export function DataTable<TData, TValue>({
   onRowClick?: (row: TData) => void;
   toolbar?: React.ReactNode;
   emptyMessage?: string;
+  /** When a row's id matches, it's highlighted and scrolled into view once — used for "open this specific record" deep links (e.g. from the Dashboard). */
+  highlightId?: string;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const highlightRef = useRef<HTMLTableRowElement | null>(null);
+
+  useEffect(() => {
+    if (highlightId) highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId]);
 
   const table = useReactTable({
     data,
@@ -82,7 +90,8 @@ export function DataTable<TData, TValue>({
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    className={onRowClick ? "cursor-pointer" : undefined}
+                    ref={row.original.id === highlightId ? highlightRef : undefined}
+                    className={cn(onRowClick && "cursor-pointer", row.original.id === highlightId && "bg-primary/10 hover:bg-primary/10")}
                     onClick={() => onRowClick?.(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => (

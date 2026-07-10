@@ -7,7 +7,7 @@ import {
 import { listPayments } from "@/server/queries/billing";
 import { listDueSubscriptions } from "@/server/queries/recurring";
 import { listTodayFeed } from "@/server/queries/calendar";
-import { todayInTimezone, dayBoundsInTimezone } from "@/lib/date-tz";
+import { todayInTimezone, dayBoundsInTimezone, formatTimeLabel } from "@/lib/date-tz";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
     getAttentionQueue(wsId),
     listPayments(wsId),
     listDueSubscriptions(wsId),
-    listTodayFeed(wsId, todayStart, todayEnd),
+    listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
@@ -105,35 +105,41 @@ export default async function DashboardPage() {
             ) : (
               <ul>
                 {attention.overdueInvoices.map((inv) => (
-                  <li key={inv.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="h-7 w-0.5 rounded-full bg-red-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-medium">Invoice {inv.number} overdue</p>
-                      <p className="truncate text-[11px] text-muted-foreground">{inv.clientName} · due {inv.dueDate}</p>
-                    </div>
-                    <FinancialAmount value={invoiceBalance(inv)} className="text-red-700 dark:text-red-400" />
+                  <li key={inv.id} className="border-t border-border/40 first:border-t-0">
+                    <Link href={`/billing?tab=invoices&open=${inv.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="h-7 w-0.5 shrink-0 rounded-full bg-red-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">Invoice {inv.number} overdue</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{inv.clientName} · due {inv.dueDate}</p>
+                      </div>
+                      <FinancialAmount value={invoiceBalance(inv)} className="text-red-700 dark:text-red-400" />
+                    </Link>
                   </li>
                 ))}
                 {attention.overdueTasks.map((t) => (
-                  <li key={t.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="h-7 w-0.5 rounded-full bg-red-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-medium">{t.title}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {t.clientName ? `${t.clientName} · ` : ""}task overdue
-                      </p>
-                    </div>
-                    <AlertTriangle className="size-3.5 text-red-600" />
+                  <li key={t.id} className="border-t border-border/40 first:border-t-0">
+                    <Link href={`/tasks?open=${t.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="h-7 w-0.5 shrink-0 rounded-full bg-red-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">{t.title}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {t.clientName ? `${t.clientName} · ` : ""}task overdue
+                        </p>
+                      </div>
+                      <AlertTriangle className="size-3.5 shrink-0 text-red-600" />
+                    </Link>
                   </li>
                 ))}
                 {attention.renewals.map((r) => (
-                  <li key={r.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="h-7 w-0.5 rounded-full bg-amber-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-medium">Renewal — {r.clientName}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">bills {r.nextBillingDate}</p>
-                    </div>
-                    <FinancialAmount value={r.amount} />
+                  <li key={r.id} className="border-t border-border/40 first:border-t-0">
+                    <Link href={`/clients/${r.clientId}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="h-7 w-0.5 shrink-0 rounded-full bg-amber-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium">Renewal — {r.clientName}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">bills {r.nextBillingDate}</p>
+                      </div>
+                      <FinancialAmount value={r.amount} />
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -150,18 +156,19 @@ export default async function DashboardPage() {
               </header>
               <ul>
                 {todaySchedule.map((ev) => (
-                  <li key={ev.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
-                    <span className="w-14 shrink-0 text-[11.5px] font-semibold tabular-nums text-muted-foreground">
-                      {new Date(ev.startAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                    </span>
-                    {ev.clientId ? (
-                      <Link href={`/clients/${ev.clientId}`} className="min-w-0 flex-1 hover:underline">
+                  <li key={`${ev.kind}-${ev.id}`} className="border-t border-border/40 first:border-t-0">
+                    <Link
+                      href={ev.kind === "task" ? `/tasks?open=${ev.taskId}` : `/calendar?event=${ev.id}`}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30"
+                    >
+                      <span className="w-14 shrink-0 text-[11.5px] font-semibold tabular-nums text-muted-foreground">
+                        {ev.allDay ? "All day" : formatTimeLabel(ev.displayStartTime)}
+                      </span>
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-[12.5px] font-medium">{ev.title}</p>
-                        <p className="truncate text-[11px] text-muted-foreground">{ev.clientName}</p>
-                      </Link>
-                    ) : (
-                      <p className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{ev.title}</p>
-                    )}
+                        {ev.clientName && <p className="truncate text-[11px] text-muted-foreground">{ev.clientName}</p>}
+                      </div>
+                    </Link>
                   </li>
                 ))}
               </ul>
