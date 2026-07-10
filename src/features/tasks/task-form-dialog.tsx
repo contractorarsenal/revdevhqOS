@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { taskSchema } from "@/lib/validation";
 import { createTask, updateTask } from "@/server/actions/tasks";
+import { createCalendarEvent } from "@/server/actions/calendar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,10 @@ export function TaskFormDialog({
   const isEdit = Boolean(task?.id);
 
   const form = useForm<FormValues>({ resolver: zodResolver(taskSchema) });
+  const [addToCalendar, setAddToCalendar] = useState(false);
+  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventStart, setEventStart] = useState("09:00");
+  const [eventEnd, setEventEnd] = useState("10:00");
 
   useEffect(() => {
     if (open) {
@@ -66,7 +71,18 @@ export function TaskFormDialog({
     startTransition(async () => {
       const result = isEdit ? await updateTask(task!.id, payload) : await createTask(payload);
       if (!result.ok) return setServerError(result.error);
-      toast.success(isEdit ? "Task updated" : "Task created");
+      if (!isEdit && addToCalendar) {
+        await createCalendarEvent({
+          title: values.title,
+          clientId: values.clientId || null,
+          date: eventDate,
+          startTime: eventStart,
+          endTime: eventEnd,
+          assigneeId: values.assigneeId || null,
+          status: "scheduled",
+        });
+      }
+      toast.success(isEdit ? "Task updated" : addToCalendar ? "Task created and added to calendar" : "Task created");
       onOpenChange(false);
       router.refresh();
     });
@@ -136,6 +152,30 @@ export function TaskFormDialog({
                 </select>
               </div>
             </>
+          )}
+          {!isEdit && (
+            <div className="col-span-2 space-y-2 rounded-md border border-border p-2.5">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={addToCalendar} onChange={(e) => setAddToCalendar(e.target.checked)} className="accent-primary" />
+                Add to Calendar
+              </label>
+              {addToCalendar && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Date</Label>
+                    <Input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Start</Label>
+                    <Input type="time" value={eventStart} onChange={(e) => setEventStart(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">End</Label>
+                    <Input type="time" value={eventEnd} onChange={(e) => setEventEnd(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {serverError && <p className="col-span-2 text-sm text-destructive">{serverError}</p>}
           <DialogFooter className="col-span-2">

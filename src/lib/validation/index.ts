@@ -215,3 +215,20 @@ export type SubscriptionInput = z.infer<typeof subscriptionSchema>;
 export type InvoiceInput = z.infer<typeof invoiceSchema>;
 export type PaymentInput = z.infer<typeof paymentSchema>;
 export type TaskInput = z.infer<typeof taskSchema>;
+
+export const calendarEventSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(200),
+  clientId: uuidOrNull,
+  taskId: uuidOrNull,
+  assigneeId: uuidOrNull,
+  date: z.string().min(1, "Date is required"),
+  startTime: z.string().min(1, "Start time is required"),
+  endTime: z.string().min(1, "End time is required"),
+  color: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  notes: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+  status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled"),
+});

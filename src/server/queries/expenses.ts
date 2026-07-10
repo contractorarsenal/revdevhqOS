@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { expenses } from "@/lib/db/schema";
 

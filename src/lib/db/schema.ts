@@ -270,6 +270,29 @@ export const expenses = pgTable("expenses", {
   index("expenses_workspace_status_idx").on(t.workspaceId, t.status),
 ]);
 
+export const calendarEventStatus = pgEnum("calendar_event_status", ["scheduled", "in_progress", "completed", "cancelled"]);
+
+export const calendarEvents = pgTable("calendar_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  assigneeId: uuid("assignee_id").references(() => profiles.id, { onDelete: "set null" }),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+  color: text("color"),
+  notes: text("notes"),
+  status: calendarEventStatus("status").notNull().default("scheduled"),
+  createdBy: uuid("created_by").references(() => profiles.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("calendar_events_workspace_start_idx").on(t.workspaceId, t.startAt),
+  index("calendar_events_client_idx").on(t.clientId),
+  index("calendar_events_task_idx").on(t.taskId),
+]);
+
 /* ========== operations ========== */
 export const tasks = pgTable("tasks", {
   id: uuid("id").primaryKey().defaultRandom(),

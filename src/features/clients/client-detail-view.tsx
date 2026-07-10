@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import {
-  Pencil, Plus, Archive, ChevronLeft, DollarSign, FileText, StickyNote, CheckSquare, ClipboardList,
+  Pencil, Plus, Archive, ChevronLeft, DollarSign, FileText, StickyNote, CheckSquare, ClipboardList, CalendarDays,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ClientAvatar } from "@/components/shared/client-avatar";
@@ -30,6 +30,7 @@ import { ClientFormDialog } from "./client-form-dialog";
 import { TaskFormDialog } from "@/features/tasks/task-form-dialog";
 import { SubscriptionFormDialog } from "@/features/billing/subscription-form-dialog";
 import { SubscriptionEditDialog } from "@/features/billing/subscription-edit-dialog";
+import { EventFormDialog } from "@/features/calendar/event-form-dialog";
 import { PaymentFormDialog } from "@/features/billing/payment-form-dialog";
 import { InvoiceFormDialog } from "@/features/billing/invoice-form-dialog";
 
@@ -47,6 +48,7 @@ export function ClientDetailView({
   const [payOpen, setPayOpen] = useState(false);
   const [invOpen, setInvOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [collectingId, setCollectingId] = useState<string | null>(null);
 
   async function markCollected(subscriptionId: string) {
@@ -394,6 +396,7 @@ export function ClientDetailView({
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setSubOpen(true)}><Plus className="size-3.5" /> Add service</Button>
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setInvOpen(true)}><FileText className="size-3.5" /> Create invoice</Button>
               <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setPayOpen(true)}><DollarSign className="size-3.5" /> Record payment</Button>
+              <Button variant="outline" size="sm" className="justify-start gap-1.5 text-xs" onClick={() => setScheduleOpen(true)}><CalendarDays className="size-3.5" /> Schedule Job</Button>
             </div>
           </div>
         </aside>
@@ -417,6 +420,7 @@ export function ClientDetailView({
         options={{ members: members.map((m: any) => ({ userId: m.userId, name: m.name })), clients: [], leads: [], opportunities: [] }}
       />
       <SubscriptionFormDialog open={subOpen} onOpenChange={setSubOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} services={services} />
+      <EventFormDialog open={scheduleOpen} onOpenChange={setScheduleOpen} defaults={{ clientId: client.id }} clients={[{ id: client.id, name: client.name }]} members={members.map((m: any) => ({ userId: m.userId, name: m.name }))} />
       <PaymentFormDialog open={payOpen} onOpenChange={setPayOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} invoices={clientInvoiceOptions} />
       <SubscriptionEditDialog open={Boolean(editSub)} onOpenChange={(o) => !o && setEditSub(null)} subscription={editSub} />
       <InvoiceFormDialog open={invOpen} onOpenChange={setInvOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} suggestedNumber={`INV-${String(1000 + billing.invoices.length + 1)}`} />

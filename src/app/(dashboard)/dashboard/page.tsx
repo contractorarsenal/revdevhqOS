@@ -6,6 +6,7 @@ import {
 } from "@/server/queries/metrics";
 import { listPayments } from "@/server/queries/billing";
 import { listDueSubscriptions } from "@/server/queries/recurring";
+import { listTodaySchedule } from "@/server/queries/calendar";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
@@ -25,7 +26,7 @@ function greeting() {
 export default async function DashboardPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
-  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs] = await timed("dashboard queries", () => Promise.all([
+  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId),
@@ -33,6 +34,7 @@ export default async function DashboardPage() {
     getAttentionQueue(wsId),
     listPayments(wsId),
     listDueSubscriptions(wsId),
+    listTodaySchedule(wsId),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
@@ -134,6 +136,34 @@ export default async function DashboardPage() {
               </ul>
             )}
           </section>
+
+          {todaySchedule.length > 0 && (
+            <section className="rounded-lg border border-border bg-card shadow-sm">
+              <header className="flex items-center border-b border-border/60 px-4 py-2.5">
+                <h2 className="text-[12.5px] font-semibold">Today&apos;s Schedule</h2>
+                <Link href="/calendar" className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
+                  Calendar <ArrowRight className="size-3" />
+                </Link>
+              </header>
+              <ul>
+                {todaySchedule.map((ev) => (
+                  <li key={ev.id} className="flex items-center gap-2.5 border-t border-border/40 px-4 py-2.5 first:border-t-0">
+                    <span className="w-14 shrink-0 text-[11.5px] font-semibold tabular-nums text-muted-foreground">
+                      {new Date(ev.startAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    {ev.clientId ? (
+                      <Link href={`/clients/${ev.clientId}`} className="min-w-0 flex-1 hover:underline">
+                        <p className="truncate text-[12.5px] font-medium">{ev.title}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{ev.clientName}</p>
+                      </Link>
+                    ) : (
+                      <p className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{ev.title}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {dueSubs.length > 0 && (
             <section className="rounded-lg border border-amber-300 bg-amber-50 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
