@@ -78,6 +78,20 @@
       "when": 1783657704132,
       "tag": "0010_projects_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783912747463,
+      "tag": "0011_curved_redwing",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783912784719,
+      "tag": "0012_goals_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,7 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
         startDate: data.startDate ?? null,
         dueDate: data.dueDate ?? null,
         color: data.color ?? null,
+        completedAt: data.status === "completed" ? new Date() : null,
       })
       .returning();
 
@@ -56,7 +57,7 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
 export async function updateProject(projectId: string, input: unknown): Promise<ActionResult> {
   try {
     const ctx = await authorize("member");
-    await ownedProject(ctx.workspace.id, projectId);
+    const existing = await ownedProject(ctx.workspace.id, projectId);
     const data = projectSchema.parse(input);
     await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
@@ -72,6 +73,13 @@ export async function updateProject(projectId: string, input: unknown): Promise<
         startDate: data.startDate ?? null,
         dueDate: data.dueDate ?? null,
         color: data.color ?? null,
+        // Completion timestamp powers "projects completed" goal metrics:
+        // stamped on the transition into completed, kept if already
+        // completed, cleared when the project is reopened.
+        completedAt:
+          data.status === "completed"
+            ? existing.completedAt ?? new Date()
+            : null,
       })
       .where(eq(projects.id, projectId));
 

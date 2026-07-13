@@ -1,6 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable, pgEnum, text, boolean, timestamp, uuid, integer, numeric, date,
-  jsonb, index, uniqueIndex,
+  jsonb, index, uniqueIndex, check,
 } from "drizzle-orm/pg-core";
 
 /* ========== enums ========== */
@@ -311,6 +312,9 @@ export const projects = pgTable("projects", {
   startDate: date("start_date"),
   dueDate: date("due_date"),
   color: text("color"),
+  // Set when status transitions to "completed"; used by goal metrics to
+  // attribute a completion to a specific period. Cleared if reopened.
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -404,3 +408,64 @@ export const clientOnboarding = pgTable("client_onboarding", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [index("client_onboarding_client_idx").on(t.clientId)]);
+
+/* ========== goals ========== */
+export const goalMetricType = pgEnum("goal_metric_type", [
+  "revenue_collected", "new_clients", "new_leads", "calls_completed",
+  "emails_sent", "projects_completed", "tasks_completed", "custom",
+]);
+export const goalPeriodType = pgEnum("goal_period_type", ["weekly", "monthly", "quarterly", "annual", "custom"]);
+export const goalStatus = pgEnum("goal_status", ["active", "completed", "archived"]);
+
+/**
+ * One row = one goal for ONE defined performance period ("Monthly Revenue —
+ * July 2026"). Periods are identified by period_start/period_end, stored as
+ * workspace-local calendar dates resolved at creation time — never mutated
+ * to "roll over" to the next period, so history stays readable. A new
+ * period means a new row (see duplicateGoalForNextPeriod).
+ */
+export const businessGoals = pgTable("business_goals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  metricType: goalMetricType("metric_type").notNull(),
+  periodType: goalPeriodType("period_type").notNull(),
+  targetValue: numeric("target_value", { precision: 12, scale: 2 }).notNull(),
+  // Only meaningful for manual metrics (calls_completed, emails_sent, custom).
+  manualCurrentValue: numeric("manual_current_value", { precision: 12, scale: 2 }),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  status: goalStatus("status").notNull().default("active"),
+  color: text("color"),
+  createdBy: uuid("created_by").references(() => profiles.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+}, (t) => [
+  index("business_goals_workspace_status_idx").on(t.workspaceId, t.status),
+  index("business_goals_workspace_period_idx").on(t.workspaceId, t.periodStart, t.periodEnd),
+  index("business_goals_workspace_created_idx").on(t.workspaceId, t.createdAt),
+  index("business_goals_workspace_archived_idx").on(t.workspaceId, t.archivedAt),
+  // At most one primary goal per workspace, enforced at the database level.
+  uniqueIndex("business_goals_one_primary_per_workspace").on(t.workspaceId).where(sql`${t.isPrimary} = true`),
+  check("business_goals_target_positive", sql`${t.targetValue} > 0`),
+  check("business_goals_manual_non_negative", sql`${t.manualCurrentValue} IS NULL OR ${t.manualCurrentValue} >= 0`),
+  check("business_goals_period_valid", sql`${t.periodEnd} >= ${t.periodStart}`),
+]);
+
+/** Audit trail for manual progress updates only — automatic metrics are
+ * computed from source records and need no event log. */
+export const goalProgressUpdates = pgTable("goal_progress_updates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  goalId: uuid("goal_id").notNull().references(() => businessGoals.id, { onDelete: "cascade" }),
+  previousValue: numeric("previous_value", { precision: 12, scale: 2 }).notNull(),
+  newValue: numeric("new_value", { precision: 12, scale: 2 }).notNull(),
+  note: text("note"),
+  createdBy: uuid("created_by").references(() => profiles.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+}, (t) => [
+  index("goal_progress_updates_goal_created_idx").on(t.goalId, t.createdAt),
+]);
