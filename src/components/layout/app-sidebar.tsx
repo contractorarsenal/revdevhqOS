@@ -4,13 +4,14 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutGrid, Users, Target, Kanban, CreditCard, CheckSquare, BarChart3,
-  ClipboardList, Settings, Receipt, CalendarDays, FolderKanban,
+  ClipboardList, Settings, Receipt, CalendarDays, FolderKanban, Goal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 
 const PRIMARY = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
+  { href: "/goals", label: "Goals", icon: Goal },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/leads", label: "Leads", icon: Target },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },

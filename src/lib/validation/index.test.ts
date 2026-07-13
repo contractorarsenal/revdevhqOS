@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientSchema, subscriptionSchema, paymentSchema, invoiceSchema, taskSchema } from "./index";
+import { clientSchema, subscriptionSchema, paymentSchema, invoiceSchema, taskSchema, goalSchema, goalProgressSchema } from "./index";
 
 describe("clientSchema", () => {
   it("requires a name and normalizes empty optionals to null", () => {
@@ -69,5 +69,48 @@ describe("optional relation fields", () => {
   });
   it("still reject non-uuid garbage", () => {
     expect(() => taskSchema.parse({ title: "T", clientId: "not-a-uuid" })).toThrow();
+  });
+});
+
+describe("goalSchema", () => {
+  const base = { name: "Monthly Revenue", metricType: "revenue_collected", periodType: "monthly", month: "2026-07", targetValue: 10000 };
+
+  it("accepts a valid monthly revenue goal", () => {
+    const parsed = goalSchema.parse(base);
+    expect(parsed.targetValue).toBe(10000);
+    expect(parsed.isPrimary).toBe(false);
+  });
+
+  it("rejects a zero or negative target", () => {
+    expect(() => goalSchema.parse({ ...base, targetValue: 0 })).toThrow();
+    expect(() => goalSchema.parse({ ...base, targetValue: -5 })).toThrow();
+  });
+
+  it("requires the anchor matching the period type", () => {
+    expect(() => goalSchema.parse({ ...base, month: undefined })).toThrow();
+    expect(() => goalSchema.parse({ ...base, periodType: "quarterly" })).toThrow();
+    expect(() => goalSchema.parse({ ...base, periodType: "custom" })).toThrow();
+  });
+
+  it("rejects custom end before start", () => {
+    expect(() =>
+      goalSchema.parse({ ...base, periodType: "custom", customStart: "2026-07-10", customEnd: "2026-07-01" })
+    ).toThrow();
+  });
+
+  it("rejects a negative manual starting value but allows zero", () => {
+    expect(() => goalSchema.parse({ ...base, manualStartValue: -1 })).toThrow();
+    expect(goalSchema.parse({ ...base, manualStartValue: 0 }).manualStartValue).toBe(0);
+    expect(goalSchema.parse({ ...base, manualStartValue: "" }).manualStartValue).toBeNull();
+  });
+});
+
+describe("goalProgressSchema", () => {
+  it("accepts non-negative values, including above any target", () => {
+    expect(goalProgressSchema.parse({ value: 320 }).value).toBe(320);
+    expect(goalProgressSchema.parse({ value: 0 }).value).toBe(0);
+  });
+  it("rejects negative progress", () => {
+    expect(() => goalProgressSchema.parse({ value: -3 })).toThrow();
   });
 });

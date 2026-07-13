@@ -7,6 +7,8 @@ import {
 import { listPayments } from "@/server/queries/billing";
 import { listDueSubscriptions } from "@/server/queries/recurring";
 import { listTodayFeed } from "@/server/queries/calendar";
+import { getDashboardGoals } from "@/server/queries/goals";
+import { DashboardGoals } from "@/features/goals/dashboard-goals";
 import { todayInTimezone, dayBoundsInTimezone, formatTimeLabel } from "@/lib/date-tz";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
@@ -29,7 +31,7 @@ export default async function DashboardPage() {
   const wsId = ctx.workspace.id;
   const today = todayInTimezone(ctx.workspace.timezone);
   const { start: todayStart, end: todayEnd } = dayBoundsInTimezone(ctx.workspace.timezone, today);
-  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule] = await timed("dashboard queries", () => Promise.all([
+  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule, goals] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId),
@@ -38,6 +40,7 @@ export default async function DashboardPage() {
     listPayments(wsId),
     listDueSubscriptions(wsId),
     listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
+    getDashboardGoals(wsId, ctx.workspace.timezone),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
@@ -58,6 +61,8 @@ export default async function DashboardPage() {
         <MetricCard label="Outstanding" value={formatMoney(metrics.outstanding)} hint="unpaid invoices" />
         <MetricCard label="Past-due" value={formatMoney(metrics.pastDue)} hint="past the due date" />
       </MetricGrid>
+
+      <DashboardGoals primary={goals.primary} others={goals.others} totalActive={goals.totalActive} />
 
       {!hasAnyData && (
         <div className="mb-4">

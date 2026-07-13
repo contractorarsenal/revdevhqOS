@@ -254,3 +254,50 @@ export const calendarEventSchema = z.object({
   notes: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
   status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled"),
 });
+
+export const goalSchema = z
+  .object({
+    name: z.string().trim().min(1, "Goal name is required").max(120),
+    description: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+    metricType: z.enum([
+      "revenue_collected", "new_clients", "new_leads", "calls_completed",
+      "emails_sent", "projects_completed", "tasks_completed", "custom",
+    ]),
+    periodType: z.enum(["weekly", "monthly", "quarterly", "annual", "custom"]),
+    targetValue: z.coerce.number().gt(0, "Target must be greater than zero").max(999_999_999),
+    // Period anchors — which one applies depends on periodType (checked below).
+    weekDate: z.string().optional(),
+    month: z.string().optional(),
+    quarter: z.coerce.number().int().optional(),
+    year: z.coerce.number().int().optional(),
+    customStart: z.string().optional(),
+    customEnd: z.string().optional(),
+    color: z
+      .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #DC2626")])
+      .transform((v) => (v === "" ? null : v))
+      .nullable()
+      .optional(),
+    isPrimary: z.coerce.boolean().default(false),
+    manualStartValue: z
+      .union([z.literal(""), z.coerce.number().min(0, "Starting value cannot be negative").max(999_999_999)])
+      .transform((v) => (v === "" ? null : v))
+      .nullable()
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    const need = (field: string, message: string) =>
+      ctx.addIssue({ code: "custom", path: [field], message });
+    if (data.periodType === "weekly" && !data.weekDate) need("weekDate", "Pick a date inside the target week");
+    if (data.periodType === "monthly" && !data.month) need("month", "Pick a target month");
+    if (data.periodType === "quarterly" && (!data.quarter || !data.year)) need("quarter", "Pick a quarter and year");
+    if (data.periodType === "annual" && !data.year) need("year", "Pick a target year");
+    if (data.periodType === "custom") {
+      if (!data.customStart || !data.customEnd) need("customStart", "Custom periods need start and end dates");
+      else if (data.customEnd < data.customStart) need("customEnd", "End date must be on or after the start date");
+    }
+  });
+
+export const goalProgressSchema = z.object({
+  value: z.coerce.number().min(0, "Progress cannot be negative").max(999_999_999),
+  note: z.string().trim().max(500).transform((v) => (v === "" ? null : v)).nullable().optional(),
+});
