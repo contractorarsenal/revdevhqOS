@@ -63,6 +63,7 @@ export const contactSchema = z.object({
 
 export const leadSchema = z.object({
   company: z.string().trim().min(1, "Company is required").max(200),
+  clientId: uuidOrNull,
   contactName: optionalTrimmed,
   email: optionalTrimmed,
   phone: optionalTrimmed,
@@ -300,4 +301,42 @@ export const goalSchema = z
 export const goalProgressSchema = z.object({
   value: z.coerce.number().min(0, "Progress cannot be negative").max(999_999_999),
   note: z.string().trim().max(500).transform((v) => (v === "" ? null : v)).nullable().optional(),
+});
+
+export const primaryContactSchema = z.object({
+  name: z.string().trim().min(1, "Contact name is required").max(200),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid email"),
+  phone: optionalTrimmed,
+  title: optionalTrimmed,
+});
+
+export const portalInviteSchema = z.object({
+  role: z.enum(["client_owner", "client_member", "client_read_only"]).default("client_owner"),
+});
+
+export const acceptInviteSchema = z.object({
+  token: z.string().min(20, "Invalid invitation link"),
+  fullName: z.string().trim().min(1, "Your name is required").max(200),
+  phone: optionalTrimmed,
+  title: optionalTrimmed,
+  confirmBusiness: z.literal(true, { error: "Please confirm you are joining this business" }),
+  acceptTerms: z.literal(true, { error: "Please accept the terms to continue" }),
+  emailNotifications: z.coerce.boolean().default(true),
+});
+
+export const clientPortalSettingsSchema = z.object({
+  industry: z
+    .union([z.literal(""), z.string().trim().max(60)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
+  portalAccentColor: z
+    .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #DC2626")])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
 });

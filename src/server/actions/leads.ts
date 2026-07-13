@@ -7,7 +7,7 @@ import { leads, opportunities, pipelineStages } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { leadSchema } from "@/lib/validation";
-import { assertWorkspaceMember } from "@/server/workspace-guards";
+import { assertWorkspaceMember, assertWorkspaceClient } from "@/server/workspace-guards";
 
 async function ownedLead(workspaceId: string, leadId: string) {
   const [row] = await db
@@ -31,6 +31,7 @@ function leadValues(data: ReturnType<typeof leadSchema.parse>) {
     estimatedValue: data.estimatedValue != null ? String(data.estimatedValue) : null,
     estimatedMrr: data.estimatedMrr != null ? String(data.estimatedMrr) : null,
     ownerId: data.ownerId ?? null,
+    clientId: data.clientId ?? null,
     nextFollowUpAt: data.nextFollowUpAt ? new Date(data.nextFollowUpAt) : null,
     notes: data.notes ?? null,
   };
@@ -41,6 +42,7 @@ export async function createLead(input: unknown): Promise<ActionResult<{ id: str
     const ctx = await authorize("member");
     const data = leadSchema.parse(input);
     await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
+    await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     const [row] = await db
       .insert(leads)
       .values({ workspaceId: ctx.workspace.id, ...leadValues(data), ownerId: data.ownerId ?? ctx.user.id })
@@ -63,6 +65,7 @@ export async function updateLead(leadId: string, input: unknown): Promise<Action
     await ownedLead(ctx.workspace.id, leadId);
     const data = leadSchema.parse(input);
     await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
+    await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     await db
       .update(leads)
       .set(leadValues(data))

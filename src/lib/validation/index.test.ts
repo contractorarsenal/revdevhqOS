@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientSchema, subscriptionSchema, paymentSchema, invoiceSchema, taskSchema, goalSchema, goalProgressSchema } from "./index";
+import { clientSchema, subscriptionSchema, paymentSchema, invoiceSchema, taskSchema, goalSchema, goalProgressSchema, primaryContactSchema, acceptInviteSchema } from "./index";
 
 describe("clientSchema", () => {
   it("requires a name and normalizes empty optionals to null", () => {
@@ -112,5 +112,28 @@ describe("goalProgressSchema", () => {
   });
   it("rejects negative progress", () => {
     expect(() => goalProgressSchema.parse({ value: -3 })).toThrow();
+  });
+});
+
+describe("primaryContactSchema", () => {
+  it("normalizes the email to lowercase — the authoritative invite address", () => {
+    const parsed = primaryContactSchema.parse({ name: "Dana", email: "  Dana@HighlineRoofing.COM " });
+    expect(parsed.email).toBe("dana@highlineroofing.com");
+  });
+  it("requires a valid email and a name", () => {
+    expect(() => primaryContactSchema.parse({ name: "Dana", email: "not-an-email" })).toThrow();
+    expect(() => primaryContactSchema.parse({ name: "", email: "d@a.com" })).toThrow();
+  });
+});
+
+describe("acceptInviteSchema", () => {
+  const base = { token: "a".repeat(43), fullName: "Dana Whitfield", confirmBusiness: true, acceptTerms: true };
+  it("requires explicit business confirmation and terms acceptance", () => {
+    expect(acceptInviteSchema.parse(base).fullName).toBe("Dana Whitfield");
+    expect(() => acceptInviteSchema.parse({ ...base, confirmBusiness: false })).toThrow();
+    expect(() => acceptInviteSchema.parse({ ...base, acceptTerms: false })).toThrow();
+  });
+  it("rejects obviously invalid tokens", () => {
+    expect(() => acceptInviteSchema.parse({ ...base, token: "short" })).toThrow();
   });
 });

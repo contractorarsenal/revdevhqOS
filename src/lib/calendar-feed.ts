@@ -1,4 +1,5 @@
 import { toDateOnlyString, formatInTimezone, zonedTimeToUtc } from "@/lib/date-tz";
+import { periodLabel, type GoalPeriodType } from "@/lib/goals";
 
 /**
  * Pure calendar-feed merge logic, extracted from the query layer so the
@@ -30,13 +31,21 @@ export type FeedTaskRow = {
   calendarVisible: boolean;
 };
 
+export type FeedGoalRow = {
+  id: string; name: string; periodType: GoalPeriodType;
+  periodStart: string | Date; periodEnd: string | Date;
+  status: "active" | "completed" | "archived"; color: string | null;
+};
+
 export type CalendarFeedItem = {
-  id: string; kind: "event" | "task"; title: string; startAt: Date; endAt: Date; allDay: boolean;
+  id: string; kind: "event" | "task" | "goal"; title: string; startAt: Date; endAt: Date; allDay: boolean;
   displayDate: string; displayStartTime: string; displayEndTime: string;
   color: string | null; status: string; eventType: string;
   clientId: string | null; clientName: string | null;
   assigneeId: string | null; assigneeName: string | null;
   taskId: string | null; projectName: string | null;
+  /** set only for kind === "goal" — the milestone links to /goals/[goalId] */
+  goalId: string | null;
 };
 
 /** Normalizes scheduledDate (string or Date, depending on driver) once for reuse. */
@@ -49,7 +58,54 @@ export function taskBelongsOnCalendar(task: Pick<FeedTaskRow, "scheduledDate" | 
   return Boolean(task.scheduledDate) && task.calendarVisible;
 }
 
-export function buildCalendarFeed(events: FeedEventRow[], rawTasks: FeedTaskRow[], timezone: string): CalendarFeedItem[] {
+/**
+ * Goal milestones: one all-day "starts" marker on period_start and one
+ * all-day "deadline" marker on period_end; a single combined marker when
+ * the period is one day. Derived items only — goals never create
+ * calendar_events rows, so refreshes can never duplicate them, and
+ * archived goals simply stop being passed in.
+ */
+function goalMilestones(goals: FeedGoalRow[], timezone: string): CalendarFeedItem[] {
+  const items: CalendarFeedItem[] = [];
+  for (const g of goals) {
+    if (g.status === "archived") continue;
+    const start = toDateOnlyString(g.periodStart)!;
+    const end = toDateOnlyString(g.periodEnd)!;
+    const label = periodLabel(g.periodType, { start, end });
+    const base = {
+      kind: "goal" as const, allDay: true, displayStartTime: "00:00", displayEndTime: "23:59",
+      color: g.color ?? "#64748B", status: "scheduled", eventType: "goal",
+      clientId: null, clientName: null, assigneeId: null, assigneeName: null,
+      taskId: null, projectName: null, goalId: g.id,
+    };
+    if (start === end) {
+      items.push({
+        ...base, id: `${g.id}:milestone`, title: `Goal: ${g.name} — ${label}`,
+        displayDate: start,
+        startAt: zonedTimeToUtc(start, "00:00", timezone), endAt: zonedTimeToUtc(start, "23:59", timezone),
+      });
+    } else {
+      items.push({
+        ...base, id: `${g.id}:start`, title: `Goal starts: ${g.name} — ${label}`,
+        displayDate: start,
+        startAt: zonedTimeToUtc(start, "00:00", timezone), endAt: zonedTimeToUtc(start, "23:59", timezone),
+      });
+      items.push({
+        ...base, id: `${g.id}:deadline`, title: `Goal deadline: ${g.name} — ${label}`,
+        displayDate: end,
+        startAt: zonedTimeToUtc(end, "00:00", timezone), endAt: zonedTimeToUtc(end, "23:59", timezone),
+      });
+    }
+  }
+  return items;
+}
+
+export function buildCalendarFeed(
+  events: FeedEventRow[],
+  rawTasks: FeedTaskRow[],
+  goals: FeedGoalRow[],
+  timezone: string
+): CalendarFeedItem[] {
   const scheduledTasks = rawTasks.map(normalizedTask);
 
   const eventItems: CalendarFeedItem[] = events.map((e) => {
@@ -59,7 +115,7 @@ export function buildCalendarFeed(events: FeedEventRow[], rawTasks: FeedTaskRow[
       id: e.id, kind: "event", title: e.title, startAt: e.startAt, endAt: e.endAt, allDay: e.allDay,
       displayDate: start.date, displayStartTime: start.time, displayEndTime: end.time,
       color: e.color, status: e.status, eventType: e.eventType, clientId: e.clientId, clientName: e.clientName,
-      assigneeId: e.assigneeId, assigneeName: e.assigneeName, taskId: e.taskId, projectName: null,
+      assigneeId: e.assigneeId, assigneeName: e.assigneeName, taskId: e.taskId, projectName: null, goalId: null,
     };
   });
 
@@ -79,11 +135,13 @@ export function buildCalendarFeed(events: FeedEventRow[], rawTasks: FeedTaskRow[
         displayDate: t.scheduledDate!, displayStartTime, displayEndTime,
         color: t.status === "completed" ? "#64748B" : "#0D9488", status: t.status, eventType: "task",
         clientId: t.clientId, clientName: t.clientName, assigneeId: t.assigneeId, assigneeName: t.assigneeName,
-        taskId: t.id, projectName: t.projectName,
+        taskId: t.id, projectName: t.projectName, goalId: null,
       };
     });
 
-  return [...eventItems, ...taskItems].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+  return [...eventItems, ...taskItems, ...goalMilestones(goals, timezone)].sort(
+    (a, b) => a.startAt.getTime() - b.startAt.getTime()
+  );
 }
 
 /** Project progress as a rounded percentage; 0 for a project with no tasks. */
