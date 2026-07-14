@@ -36,7 +36,7 @@ export function PortalOverview({
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div id="account" className="scroll-mt-20 rounded-lg border border-border bg-card p-4 shadow-sm">
           <h2 className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Your account</h2>
           <dl className="mt-2.5 space-y-1.5 text-[12.5px]">
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Business</dt><dd className="text-right font-medium">{businessName}</dd></div>

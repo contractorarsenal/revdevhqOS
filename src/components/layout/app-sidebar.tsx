@@ -2,19 +2,10 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutGrid, Users, Target, Kanban, CreditCard, CheckSquare, BarChart3,
-  ClipboardList, Settings, Receipt, CalendarDays, FolderKanban, Goal,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 
-import { SIDEBAR_PRIMARY_NAV as PRIMARY } from "./nav-items";
-
-const SECONDARY = [
-  { href: "/onboarding", label: "Onboarding", icon: ClipboardList },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+import { SIDEBAR_PRIMARY_NAV as PRIMARY, SIDEBAR_SECONDARY_NAV as SECONDARY } from "./nav-items";
 
 function NavPending() {
   const { pending } = useLinkStatus();
@@ -48,7 +39,7 @@ export function AppSidebar(props: {
   role: string;
 }) {
   return (
-    <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-sidebar-border bg-sidebar px-2.5 py-4 md:flex">
+    <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-sidebar-border bg-sidebar px-2.5 py-4 lg:flex">
       <div className="mb-3 flex items-center gap-2 px-2">
         <div className="flex size-[22px] items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">r</div>
         <span className="text-[13.5px] font-semibold tracking-tight">

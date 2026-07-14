@@ -53,7 +53,7 @@ export default async function PortalPreviewPage({ params }: { params: Promise<{ 
           Exit Preview
         </Link>
       </div>
-      <PortalShell businessName={client.name} accent={accent} showSignOut={false}>
+      <PortalShell businessName={client.name} accent={accent} showSignOut={false} showNav={false}>
         <PortalOverview
           businessName={client.name}
           accent={accent}
