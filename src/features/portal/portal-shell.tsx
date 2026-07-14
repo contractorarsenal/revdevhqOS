@@ -1,4 +1,6 @@
+import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
+import { PortalMobileNav } from "@/features/portal/portal-mobile-nav";
 
 /**
  * The client portal's own chrome — deliberately separate from the internal
@@ -8,13 +10,16 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
  * highlights) — never as a full recolor.
  */
 export function PortalShell({
-  businessName, accent, userName, children, showSignOut = true,
+  businessName, accent, userName, children, showSignOut = true, showNav = true,
 }: {
   businessName: string;
   accent: string;
   userName?: string;
   children: React.ReactNode;
   showSignOut?: boolean;
+  /** false inside the internal portal-preview route, which already renders
+   * the internal MobileBottomNav — two fixed bottom bars would stack. */
+  showNav?: boolean;
 }) {
   return (
     <div className="min-h-screen bg-background">
@@ -38,7 +43,15 @@ export function PortalShell({
           {showSignOut && <SignOutButton />}
         </div>
       </header>
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <main
+        className={cn(
+          "mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8",
+          showNav && "pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-8"
+        )}
+      >
+        {children}
+      </main>
+      {showNav && <PortalMobileNav accent={accent} />}
     </div>
   );
 }
