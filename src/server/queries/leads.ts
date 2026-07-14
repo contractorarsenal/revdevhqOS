@@ -15,6 +15,7 @@ export async function listLeads(workspaceId: string) {
       phone: leads.phone,
       source: leads.source,
       status: leads.status,
+      clientId: leads.clientId,
       serviceInterest: leads.serviceInterest,
       estimatedValue: leads.estimatedValue,
       estimatedMrr: leads.estimatedMrr,

@@ -34,11 +34,18 @@ import { SubscriptionEditDialog } from "@/features/billing/subscription-edit-dia
 import { EventFormDialog } from "@/features/calendar/event-form-dialog";
 import { PaymentFormDialog } from "@/features/billing/payment-form-dialog";
 import { InvoiceFormDialog } from "@/features/billing/invoice-form-dialog";
+import { ClientPortalSection } from "@/features/clients/client-portal-section";
+import { ClientLeadSummaryCard } from "@/features/clients/client-lead-summary";
+import type { ClientPortalAccess } from "@/server/queries/client-portal";
+import type { ClientLeadSummary } from "@/server/queries/client-leads";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function ClientDetailView({
-  detail, billing, members, services,
-}: { detail: any; billing: any; members: any[]; services: any[] }) {
+  detail, billing, members, services, portalAccess, leadSummary, canManagePortal,
+}: {
+  detail: any; billing: any; members: any[]; services: any[];
+  portalAccess: ClientPortalAccess; leadSummary: ClientLeadSummary; canManagePortal: boolean;
+}) {
   const router = useRouter();
   const client = detail.client;
   const clientInvoiceOptions = billing.invoices.map((i: any) => ({ ...i, clientName: client.name }));
@@ -143,12 +150,15 @@ export function ClientDetailView({
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="billing">Billing</TabsTrigger>
+            <TabsTrigger value="portal">Portal</TabsTrigger>
             <TabsTrigger value="tasks">Tasks</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
+            <ClientLeadSummaryCard summary={leadSummary} clientName={client.name} />
+
             <section className="rounded-lg border border-border bg-card shadow-sm">
               <header className="flex items-center border-b border-border/60 px-4 py-2.5">
                 <h2 className="text-[12.5px] font-semibold">Contacts</h2>
@@ -258,6 +268,15 @@ export function ClientDetailView({
                 </div>
               )}
             </section>
+          </TabsContent>
+
+          <TabsContent value="portal" className="mt-4">
+            <ClientPortalSection
+              clientId={client.id}
+              client={{ name: client.name, industry: client.industry ?? null, portalAccentColor: client.portalAccentColor ?? null }}
+              access={portalAccess}
+              canManage={canManagePortal}
+            />
           </TabsContent>
 
           <TabsContent value="billing" className="mt-4 space-y-4">

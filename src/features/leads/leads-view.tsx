@@ -22,8 +22,8 @@ import { formatMoney, toAmount } from "@/lib/finance/metrics";
 import { LeadFormDialog } from "./lead-form-dialog";
 
 export function LeadsView({
-  leads, members, openNew,
-}: { leads: LeadRow[]; members: { userId: string; name: string }[]; openNew: boolean }) {
+  leads, members, clients, openNew,
+}: { leads: LeadRow[]; members: { userId: string; name: string }[]; clients: { id: string; name: string }[]; openNew: boolean }) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(openNew);
   const [editing, setEditing] = useState<LeadRow | null>(null);
@@ -124,6 +124,7 @@ export function LeadsView({
         open={formOpen}
         onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         members={members}
+        clients={clients}
         lead={
           editing
             ? {

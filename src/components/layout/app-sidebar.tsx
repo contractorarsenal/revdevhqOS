@@ -9,19 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 
-const PRIMARY = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
-  { href: "/goals", label: "Goals", icon: Goal },
-  { href: "/clients", label: "Clients", icon: Users },
-  { href: "/leads", label: "Leads", icon: Target },
-  { href: "/pipeline", label: "Pipeline", icon: Kanban },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/billing", label: "Billing", icon: CreditCard },
-  { href: "/expenses", label: "Expenses", icon: Receipt },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-];
+import { SIDEBAR_PRIMARY_NAV as PRIMARY } from "./nav-items";
 
 const SECONDARY = [
   { href: "/onboarding", label: "Onboarding", icon: ClipboardList },

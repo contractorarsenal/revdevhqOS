@@ -71,6 +71,8 @@ export const clients = pgTable("clients", {
   email: text("email"),
   phone: text("phone"),
   industry: text("industry"),
+  // Manual portal accent override; falls back to the industry default.
+  portalAccentColor: text("portal_accent_color"),
   address: text("address"),
   status: clientStatus("status").notNull().default("onboarding"),
   ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
@@ -95,7 +97,11 @@ export const contacts = pgTable("contacts", {
   isPrimary: boolean("is_primary").notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index("contacts_client_idx").on(t.clientId)]);
+}, (t) => [
+  index("contacts_client_idx").on(t.clientId),
+  // At most one primary contact per client — the portal invite identity.
+  uniqueIndex("contacts_one_primary_per_client").on(t.clientId).where(sql`${t.isPrimary} = true`),
+]);
 
 export const leads = pgTable("leads", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -114,10 +120,17 @@ export const leads = pgTable("leads", {
   lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
   notes: text("notes"),
   convertedClientId: uuid("converted_client_id").references(() => clients.id, { onDelete: "set null" }),
+  // A lead GENERATED FOR one of our clients (Contractor Arsenal delivers
+  // leads to contractors) — distinct from convertedClientId, which records
+  // an agency prospect that became a client.
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-}, (t) => [index("leads_workspace_status_idx").on(t.workspaceId, t.status)]);
+}, (t) => [
+  index("leads_workspace_status_idx").on(t.workspaceId, t.status),
+  index("leads_workspace_client_idx").on(t.workspaceId, t.clientId),
+]);
 
 export const pipelineStages = pgTable("pipeline_stages", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -468,4 +481,53 @@ export const goalProgressUpdates = pgTable("goal_progress_updates", {
   createdAt: createdAt(),
 }, (t) => [
   index("goal_progress_updates_goal_created_idx").on(t.goalId, t.createdAt),
+]);
+
+/* ========== client portal ========== */
+export const clientPortalRole = pgEnum("client_portal_role", ["client_owner", "client_member", "client_read_only"]);
+export const clientPortalStatus = pgEnum("client_portal_status", ["invited", "active", "suspended", "revoked"]);
+
+/**
+ * Invitation to the client portal. Only the SHA-256 hash of the invite
+ * token is stored — the plaintext token exists once, in the copyable link
+ * shown to the internal owner, and is never logged or persisted.
+ */
+export const clientPortalInvites = pgTable("client_portal_invites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: clientPortalRole("role").notNull().default("client_owner"),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  invitedBy: uuid("invited_by").references(() => profiles.id, { onDelete: "set null" }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex("client_portal_invites_token_hash_unique").on(t.tokenHash),
+  index("client_portal_invites_workspace_client_idx").on(t.workspaceId, t.clientId),
+  index("client_portal_invites_workspace_created_idx").on(t.workspaceId, t.createdAt),
+]);
+
+/** A profile's access to one client's portal. One row per (client, profile);
+ * status transitions instead of duplicate rows. */
+export const clientPortalMemberships = pgTable("client_portal_memberships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  profileId: uuid("profile_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  role: clientPortalRole("role").notNull().default("client_owner"),
+  status: clientPortalStatus("status").notNull().default("active"),
+  invitedBy: uuid("invited_by").references(() => profiles.id, { onDelete: "set null" }),
+  invitedAt: timestamp("invited_at", { withTimezone: true }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  uniqueIndex("client_portal_memberships_client_profile_unique").on(t.clientId, t.profileId),
+  index("client_portal_memberships_profile_idx").on(t.profileId),
+  index("client_portal_memberships_workspace_client_idx").on(t.workspaceId, t.clientId),
 ]);

@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { eq, and } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { profiles, workspaceMembers, workspaces } from "@/lib/db/schema";
+import { clients, clientPortalMemberships, profiles, workspaceMembers, workspaces } from "@/lib/db/schema";
 import type { WorkspaceRole } from "@/lib/permissions";
+import { resolvePostLoginDestination, type ClientPortalRole, type ClientPortalStatus } from "@/lib/portal";
 
 export const ACTIVE_WORKSPACE_COOKIE = "rdhq-active-workspace";
 
@@ -95,7 +96,13 @@ export const requireWorkspace = cache(async (): Promise<WorkspaceContext> => {
       .where(eq(workspaceMembers.userId, user.id))
   );
 
-  if (memberships.length === 0) redirect("/setup");
+  if (memberships.length === 0) {
+    // Not an internal team member — the authoritative resolver decides:
+    // active client-portal members go to /portal, suspended/revoked ones to
+    // the access-denied page, everyone else to normal setup.
+    const portalStatus = await bestPortalStatus(user.id);
+    redirect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: portalStatus }));
+  }
 
   const active =
     (preferred && memberships.find((m) => m.workspace.id === preferred)) || memberships[0];
@@ -113,3 +120,76 @@ export async function assertMembership(userId: string, workspaceId: string) {
   if (!m) throw new Error("You do not have access to this workspace.");
   return m;
 }
+
+/* ========== client portal guards ========== */
+
+/** The user's most-favorable portal membership status: active beats
+ * suspended beats revoked; null when they have no portal membership. */
+async function bestPortalStatus(profileId: string): Promise<ClientPortalStatus | null> {
+  const rows = await guardInfra(() =>
+    db
+      .select({ status: clientPortalMemberships.status })
+      .from(clientPortalMemberships)
+      .where(eq(clientPortalMemberships.profileId, profileId))
+  );
+  if (rows.length === 0) return null;
+  const order: ClientPortalStatus[] = ["active", "suspended", "revoked", "invited"];
+  for (const s of order) if (rows.some((r) => r.status === s)) return s;
+  return rows[0].status;
+}
+
+export type ClientPortalContext = {
+  user: AppUser;
+  membership: {
+    id: string;
+    role: ClientPortalRole;
+    status: ClientPortalStatus;
+    clientId: string;
+    workspaceId: string;
+  };
+  client: typeof clients.$inferSelect;
+  workspace: typeof workspaces.$inferSelect;
+};
+
+/**
+ * Gate for every /portal page and portal query. Revalidates the profile,
+ * the ACTIVE membership, and the workspace/client pair server-side on each
+ * request — client/workspace ids are never taken from the browser.
+ * Internal team members are sent back to the internal dashboard.
+ */
+export const requireClientPortalUser = cache(async (): Promise<ClientPortalContext> => {
+  const user = await requireUser();
+
+  const [internal] = await guardInfra(() =>
+    db.select({ id: workspaceMembers.id }).from(workspaceMembers).where(eq(workspaceMembers.userId, user.id)).limit(1)
+  );
+  if (internal) redirect("/dashboard");
+
+  const rows = await guardInfra(() =>
+    db
+      .select({ membership: clientPortalMemberships, client: clients, workspace: workspaces })
+      .from(clientPortalMemberships)
+      .innerJoin(clients, eq(clientPortalMemberships.clientId, clients.id))
+      .innerJoin(workspaces, eq(clientPortalMemberships.workspaceId, workspaces.id))
+      .where(eq(clientPortalMemberships.profileId, user.id))
+  );
+
+  const active = rows.find((r) => r.membership.status === "active");
+  if (!active) {
+    const status = rows.length > 0 ? "suspended" : null;
+    redirect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: status }));
+  }
+
+  return {
+    user,
+    membership: {
+      id: active.membership.id,
+      role: active.membership.role,
+      status: active.membership.status,
+      clientId: active.membership.clientId,
+      workspaceId: active.membership.workspaceId,
+    },
+    client: active.client,
+    workspace: active.workspace,
+  };
+});

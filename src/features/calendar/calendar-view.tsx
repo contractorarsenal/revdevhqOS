@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
@@ -60,6 +61,7 @@ export function CalendarView({
   events: Ev[]; members: { userId: string; name: string }[]; clients: { id: string; name: string }[];
   today: string; initialView?: ViewMode; initialDate?: string; openEventId?: string;
 }) {
+  const router = useRouter();
   // Deep link from Dashboard ("open this specific event") — computed once at
   // mount, same idiom as initialView/initialDate, so no effect is needed.
   const openEvent = openEventId ? events.find((e) => e.kind === "event" && e.id === openEventId) : undefined;
@@ -111,6 +113,10 @@ export function CalendarView({
     setFormOpen(true);
   }
   function openItem(ev: Ev) {
+    if (ev.kind === "goal") {
+      router.push(`/goals/${ev.goalId}`); // milestones link straight to the goal
+      return;
+    }
     if (ev.kind === "task") return; // tasks open in Tasks; calendar shows them read-only for now
     setEditing({
       id: ev.id, title: ev.title, eventType: ev.eventType, clientId: ev.clientId, date: ev.displayDate,
