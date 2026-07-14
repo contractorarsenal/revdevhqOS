@@ -10,7 +10,15 @@ import { createServerClient } from "@supabase/ssr";
 // "/portal/accept-invite" is the tokenized invite landing page — public so
 // invited clients can see it before creating an account. "/portal" itself
 // (and everything else under it) stays authenticated.
-const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/auth", "/setup-required", "/portal/accept-invite"];
+const PUBLIC_PATHS = [
+  "/sign-in",
+  "/sign-up",
+  "/auth",
+  "/setup-required",
+  "/portal/accept-invite",
+  "/robots.txt",
+  "/sitemap.xml",
+];
 
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -37,7 +45,9 @@ export default async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // "/" is the public marketing page — exact match only, so every other
+  // route stays protected by default.
+  const isPublic = pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
