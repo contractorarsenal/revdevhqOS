@@ -8,6 +8,7 @@ import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { clientSchema, contactSchema } from "@/lib/validation";
 import { assertWorkspaceMember } from "@/server/workspace-guards";
+import { revalidateGoalPaths } from "./revalidate-goals";
 
 async function ownedClient(workspaceId: string, clientId: string) {
   const [row] = await db
@@ -60,7 +61,7 @@ export async function createClient(input: unknown): Promise<ActionResult<{ id: s
       metadata: { name: data.name },
     });
     revalidatePath("/clients");
-    revalidatePath("/dashboard");
+    revalidateGoalPaths(); // new_clients goal metric counts creation time
     return { ok: true, data: { id: clientId } };
   } catch (err) {
     return actionError(err);

@@ -6,14 +6,15 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
-import { subscriptionSchema } from "@/lib/validation";
+import { subscriptionEditSchema } from "@/lib/validation";
 import { updateSubscription } from "@/server/actions/billing";
+import { toDateOnlyString } from "@/lib/date-tz";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type FormValues = z.input<typeof subscriptionSchema>;
+type FormValues = z.input<typeof subscriptionEditSchema>;
 
 export function SubscriptionEditDialog({
   open, onOpenChange, subscription,
@@ -21,32 +22,29 @@ export function SubscriptionEditDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subscription: {
-    id: string; clientId: string; serviceId: string; amount: string; frequency: string;
-    status: string; startDate: string; nextBillingDate: string | null; paymentDay: number | null;
+    id: string; amount: string; frequency: string;
+    status: string; startDate: string | Date; nextBillingDate: string | Date | null; paymentDay?: number | null;
   } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
-  const form = useForm<FormValues>({ resolver: zodResolver(subscriptionSchema) });
+  const form = useForm<FormValues>({ resolver: zodResolver(subscriptionEditSchema) });
 
   useEffect(() => {
     if (open && subscription) {
       form.reset({
-        clientId: subscription.clientId,
-        serviceId: subscription.serviceId,
         amount: subscription.amount,
         frequency: subscription.frequency as FormValues["frequency"],
         status: subscription.status as FormValues["status"],
-        startDate: subscription.startDate,
-        nextBillingDate: subscription.nextBillingDate ?? "",
+        startDate: toDateOnlyString(subscription.startDate) ?? "",
+        nextBillingDate: toDateOnlyString(subscription.nextBillingDate) ?? "",
         paymentDay: subscription.paymentDay ?? "",
       });
     }
   }, [open, subscription, form]);
 
   function onSubmit(values: FormValues) {
-    setServerError(null);
     if (!subscription) return;
     setServerError(null);
     startTransition(async () => {
@@ -70,6 +68,7 @@ export function SubscriptionEditDialog({
             <div className="space-y-1">
               <Label>Amount (USD) *</Label>
               <Input type="number" step="0.01" min="0" {...form.register("amount")} />
+              {form.formState.errors.amount && <p className="text-xs text-destructive">{String(form.formState.errors.amount.message)}</p>}
             </div>
             <div className="space-y-1">
               <Label>Frequency</Label>
@@ -79,8 +78,9 @@ export function SubscriptionEditDialog({
             </div>
             <div className="space-y-1">
               <Label>Payment day of month</Label>
-              <Input type="number" min="1" max="28" {...form.register("paymentDay")} placeholder="e.g. 5" />
-              <p className="text-[11px] text-muted-foreground">Used to know when a monthly payment is due.</p>
+              <Input type="number" min="1" max="31" {...form.register("paymentDay")} placeholder="e.g. 5" />
+              <p className="text-[11px] text-muted-foreground">Used to know when a monthly payment is due. Days 29–31 fall on the last day of shorter months.</p>
+              {form.formState.errors.paymentDay && <p className="text-xs text-destructive">{String(form.formState.errors.paymentDay.message)}</p>}
             </div>
             <div className="space-y-1">
               <Label>Status</Label>

@@ -13,6 +13,7 @@ config({ path: ".env.local" });
 config({ path: ".env" });
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const RUN_START = new Date();
 const EMAIL = `e2e-${Date.now()}@revdevhqos.dev`;
 const PASSWORD = "e2e-password-123";
 
@@ -108,6 +109,180 @@ await step("invoice + payment update balances", async () => {
   await page.waitForSelector("text=paid");
 });
 
+await step("create Monthly Revenue goal; it already reflects the $500 from the earlier invoice payment", async () => {
+  await page.goto(`${BASE}/goals?new=1`);
+  await page.fill('input[placeholder="Monthly Revenue"]', "E2E Monthly Revenue");
+  await page.fill('input[placeholder="10000"]', "10000");
+  await page.getByRole("button", { name: "Create goal" }).click();
+  await page.waitForSelector("text=Goal created");
+  await page.reload();
+  await page.waitForSelector("text=E2E Monthly Revenue");
+  const body = await page.textContent("body");
+  if (!body.includes("$500")) throw new Error(`expected the goal to already show $500 collected; body did not contain it`);
+});
+
+await step("recording a payment on /billing updates the goal reached via a real sidebar navigation (not a hard reload)", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.getByRole("button", { name: /record payment/i }).first().click();
+  await page.locator('select[name="clientId"]').selectOption({ label: "E2E Verification Co." });
+  await page.locator('input[name="amount"]').fill("300");
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+  await page.waitForSelector("text=Payment recorded");
+  // Real user flow: click the sidebar link (client-side navigation), never page.goto —
+  // this is the exact path that used to serve a stale cached /goals RSC payload
+  // before every payment mutation started revalidating "/goals" and "/goals/[id]".
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$800"); // 500 + 300
+});
+
+await step("editing that payment's amount updates the goal immediately", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.locator("tr", { hasText: "$300" }).getByTitle("Edit payment").click();
+  await page.locator('input[name="amount"]').fill("600");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Payment updated");
+  await page.locator('a[href="/dashboard"]').first().click();
+  await page.waitForURL("**/dashboard");
+  await page.waitForSelector("text=$1,100"); // 500 + 600
+});
+
+await step("voiding that payment removes it from the goal immediately", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.locator("tr", { hasText: "$600" }).getByTitle("Remove payment").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove payment" }).click();
+  await page.waitForSelector("text=Payment removed");
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$500"); // back to just the original invoice payment
+});
+
+await step("restoring that payment brings it back into the goal immediately", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.getByRole("button", { name: "Removed" }).click();
+  await page.locator("tr", { hasText: "$600" }).getByTitle("Restore payment").click();
+  await page.waitForSelector("text=Payment restored");
+  await page.locator('a[href="/dashboard"]').first().click();
+  await page.waitForURL("**/dashboard");
+  await page.waitForSelector("text=$1,100"); // 500 + 600 again
+});
+
+
+await step("a payment assigned to LAST month does not move the current-month goal", async () => {
+  const prev = new Date();
+  prev.setUTCMonth(prev.getUTCMonth() - 1);
+  const prevMonth = prev.toISOString().slice(0, 7);
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.getByRole("button", { name: /record payment/i }).first().click();
+  await page.locator('select[name="clientId"]').selectOption({ label: "E2E Verification Co." });
+  await page.locator('input[name="amount"]').fill("222");
+  await page.locator('input[name="billingMonth"]').fill(prevMonth);
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+  await page.waitForSelector("text=Payment recorded");
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$1,100"); // unchanged — the $222 belongs to last month
+});
+
+await step("editing that payment INTO the current billing month moves it into the goal", async () => {
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.locator("tr", { hasText: "$222" }).getByTitle("Edit payment").click();
+  await page.locator('input[name="billingMonth"]').fill(thisMonth);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Payment updated");
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$1,322"); // 1,100 + 222
+});
+
+await step("client page: edit subscription amount, payment day, and status — values persist after reload", async () => {
+  await page.goto(`${BASE}/clients`);
+  await page.getByText("E2E Verification Co.").first().click();
+  await page.getByRole("link", { name: "View full client" }).click();
+  await page.waitForSelector("text=Active services");
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.waitForSelector("text=Edit subscription");
+  await page.locator('input[name="amount"]').fill("1250");
+  await page.locator('input[name="paymentDay"]').fill("1");
+  await page.locator('select[name="status"]').selectOption("active");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Subscription updated");
+  await page.reload();
+  await page.waitForSelector("text=$1,250");
+  await page.waitForSelector("text=day 1");
+});
+
+await step("Next payment reflects the edited payment day and the due card knows the cycle is uncollected", async () => {
+  const body = await page.textContent("body");
+  if (!body.includes("Next payment")) throw new Error("Next payment stat missing");
+  if (!/Next payment/.test(body)) throw new Error("next payment label missing");
+  // Payment day 1: the currently-owed cycle is this month's 1st (uncollected),
+  // so the client page must show a "Payment due" card for the subscription.
+  await page.waitForSelector("text=Payment due");
+  // And the dashboard-wide due card agrees.
+  await page.locator('a[href="/dashboard"]').first().click();
+  await page.waitForURL("**/dashboard");
+  await page.waitForSelector("text=Due recurring payments");
+  await page.waitForSelector("text=E2E Verification Co.");
+});
+
+await step("paused subscription shows no misleading upcoming payment", async () => {
+  await page.goto(`${BASE}/clients`);
+  await page.getByText("E2E Verification Co.").first().click();
+  await page.getByRole("link", { name: "View full client" }).click();
+  await page.waitForSelector("text=Active services");
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.waitForSelector("text=Edit subscription");
+  await page.locator('select[name="status"]').selectOption("paused");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Subscription updated");
+  await page.reload();
+  await page.waitForSelector("text=No active subscription");
+  // restore to active for the remaining steps
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.locator('select[name="status"]').selectOption("active");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Subscription updated");
+});
+
+await step("client page payments list offers Edit and Remove on active payments", async () => {
+  await page.reload();
+  await page.getByRole("tab", { name: "Billing" }).click();
+  await page.waitForSelector("text=Payments");
+  const editButtons = await page.getByRole("button", { name: "Edit", exact: true }).count();
+  if (editButtons < 1) throw new Error("no Edit action on client payments list");
+  await page.waitForSelector("text=Remove");
+});
+
+await step("goal detail page shows live pace/projection stats with a real computed days-remaining value", async () => {
+  await page.goto(`${BASE}/goals`);
+  await page.getByText("E2E Monthly Revenue").first().click();
+  await page.waitForSelector("text=Required pace");
+  await page.waitForSelector("text=Days remaining");
+  const daysRemainingText = (await page.locator('dt:has-text("Days remaining") + dd').textContent())?.trim();
+  // Must render some real computed value (a non-negative integer, "Period ended",
+  // or "Starts <date>") — not blank, "undefined", "NaN", or a suspicious
+  // constant total-days-in-month value on a day that isn't day one of the month.
+  if (!daysRemainingText || /undefined|NaN/i.test(daysRemainingText)) {
+    throw new Error(`days remaining did not render a real value: "${daysRemainingText}"`);
+  }
+});
+
+await step("goal cards render without layout overflow on mobile, tablet, and desktop", async () => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 834, height: 1194 }, { width: 1440, height: 950 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${BASE}/dashboard`);
+    await page.waitForSelector("text=E2E Monthly Revenue");
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    if (scrollWidth > clientWidth + 1) {
+      throw new Error(`horizontal overflow at ${viewport.width}px: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 950 });
+});
+
 await step("lead → opportunity conversion", async () => {
   await page.goto(`${BASE}/leads`);
   await page.getByRole("button", { name: "Add Lead" }).first().click();
@@ -166,6 +341,22 @@ try {
   }
 } catch (err) {
   console.error("warning: could not clean up test user", EMAIL, err);
+}
+
+// Clean up this run's workspace row (cascades to all test data) — the auth
+// user deletion above does NOT cascade to the workspace.
+try {
+  const pg = (await import("pg")).default;
+  const url = process.env.DATABASE_URL;
+  const pool = new pg.Pool({
+    connectionString: url,
+    ssl: url.includes("supabase.co") || url.includes("supabase.com") ? { rejectUnauthorized: false } : undefined,
+  });
+  const res = await pool.query(`DELETE FROM workspaces WHERE name = 'E2E Agency' AND created_at >= $1`, [RUN_START]);
+  console.log(`cleaned up ${res.rowCount} E2E workspace(s) from this run`);
+  await pool.end();
+} catch (err) {
+  console.error("warning: could not clean up E2E workspace", err);
 }
 
 const failed = results.filter(([s]) => s === "FAIL").length;

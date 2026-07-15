@@ -76,7 +76,9 @@ function PrimaryGoalCard({ goal }: { goal: GoalWithProgress }) {
       <GoalProgressBar pct={c.progressPct} status={c.status} className="mt-2" />
       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11.5px]">
         <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Remaining</dt><dd className="font-semibold tabular-nums">{formatGoalValue(c.remainingValue, goal.metricType)}</dd></div>
-        <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Days left</dt><dd className="font-semibold tabular-nums">{c.periodState === "ended" ? "Ended" : c.remainingDays}</dd></div>
+        {/* An upcoming goal must say WHEN it starts — showing the full period
+            length as "days left" reads as a frozen countdown that never moves. */}
+        <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Days left</dt><dd className="font-semibold tabular-nums">{c.periodState === "ended" ? "Ended" : c.periodState === "upcoming" ? `Starts ${goal.periodStart}` : c.remainingDays}</dd></div>
         <div className="flex justify-between gap-2">
           <dt className="text-muted-foreground">Required</dt>
           <dd className="font-semibold tabular-nums">{c.requiredPace === null ? "—" : formatPace(c.requiredPace, goal.metricType)}</dd>

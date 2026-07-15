@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
-  isRevenuePayment, recalcInvoiceAfterVoid, paymentAttribution,
-  currentDueMonth, isDueLate, nextPaymentFor,
+  isRevenuePayment, recalcInvoiceAfterVoid, recalcInvoiceForPaymentChange, paymentAttribution,
+  currentDueMonth, isDueLate, nextPaymentFor, paymentRevenueDate, paymentBelongsToPeriod,
 } from "./metrics";
 
 describe("normalizeToMonthly", () => {
@@ -124,6 +124,109 @@ describe("payment voiding", () => {
   });
 });
 
+describe("paymentRevenueDate / paymentBelongsToPeriod — the authoritative revenue period", () => {
+  const july = { start: "2026-07-01", end: "2026-07-31" };
+
+  it("billing_month wins whenever set: a July subscription collected on August 2 is July revenue", () => {
+    const p = { status: "succeeded", billingMonth: "2026-07-01", paidAt: new Date("2026-08-02T18:00:00Z") };
+    expect(paymentRevenueDate(p, "America/Los_Angeles")).toBe("2026-07-01");
+    expect(paymentBelongsToPeriod(p, july, "America/Los_Angeles")).toBe(true);
+  });
+
+  it("a June billing month collected in July is June revenue, not July", () => {
+    const p = { status: "succeeded", billingMonth: "2026-06-01", paidAt: new Date("2026-07-02T18:00:00Z") };
+    expect(paymentBelongsToPeriod(p, july, "America/Los_Angeles")).toBe(false);
+    expect(paymentBelongsToPeriod(p, { start: "2026-06-01", end: "2026-06-30" }, "America/Los_Angeles")).toBe(true);
+  });
+
+  it("without a billing month, the workspace-LOCAL date of collection decides — never the UTC date", () => {
+    // 2026-07-01T06:59Z is still June 30 in Los Angeles
+    const p = { status: "succeeded", billingMonth: null, paidAt: new Date("2026-07-01T06:59:00Z") };
+    expect(paymentRevenueDate(p, "America/Los_Angeles")).toBe("2026-06-30");
+    expect(paymentRevenueDate(p, "UTC")).toBe("2026-07-01");
+    expect(paymentBelongsToPeriod(p, july, "America/Los_Angeles")).toBe(false);
+    expect(paymentBelongsToPeriod(p, july, "UTC")).toBe(true);
+  });
+
+  it("non-succeeded statuses never belong to any period", () => {
+    for (const status of ["pending", "failed", "refunded", "voided"]) {
+      expect(paymentBelongsToPeriod({ status, billingMonth: "2026-07-01", paidAt: new Date("2026-07-10T12:00:00Z") }, july, "UTC")).toBe(false);
+    }
+  });
+
+  it("normalizes Date-typed billing_month values (PGlite driver) like string ones (node-postgres)", () => {
+    const asDate = { status: "succeeded", billingMonth: new Date("2026-07-01T00:00:00Z"), paidAt: new Date("2026-08-02T12:00:00Z") };
+    expect(paymentRevenueDate(asDate, "UTC")).toBe("2026-07-01");
+  });
+
+  it("exactly one period per payment: revenue date is a single calendar date", () => {
+    const p = { status: "succeeded", billingMonth: "2026-06-01", paidAt: new Date("2026-07-02T18:00:00Z") };
+    const months = [
+      { start: "2026-05-01", end: "2026-05-31" },
+      { start: "2026-06-01", end: "2026-06-30" },
+      july,
+      { start: "2026-08-01", end: "2026-08-31" },
+    ];
+    const memberships = months.filter((m) => paymentBelongsToPeriod(p, m, "America/Los_Angeles"));
+    expect(memberships).toHaveLength(1);
+  });
+});
+
+describe("recalcInvoiceForPaymentChange — general delta recalculation for edit/void/restore/delete", () => {
+  const invoice = { total: "1000", amountPaid: "500", status: "open" };
+
+  it("create: before=null applies the full new amount", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, null, { status: "succeeded", amount: 200 });
+    expect(r).toEqual({ amountPaid: 700, status: "open" });
+  });
+
+  it("edit: raising a succeeded payment's amount applies only the delta", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 300 }, { status: "succeeded", amount: 500 });
+    expect(r).toEqual({ amountPaid: 700, status: "open" }); // 500 - 300 + 500
+  });
+
+  it("edit: lowering a succeeded payment's amount un-applies the delta and can reopen a paid invoice", () => {
+    const paid = { total: "1000", amountPaid: "1000", status: "paid" };
+    const r = recalcInvoiceForPaymentChange(paid, { status: "succeeded", amount: 400 }, { status: "succeeded", amount: 100 });
+    expect(r).toEqual({ amountPaid: 700, status: "open" });
+  });
+
+  it("edit: flipping status away from succeeded un-applies the full amount, same as a void", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 300 }, { status: "pending", amount: 300 });
+    expect(r).toEqual({ amountPaid: 200, status: "open" });
+  });
+
+  it("restore: flipping status from voided back to succeeded re-applies the amount", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "voided", amount: 300 }, { status: "succeeded", amount: 300 });
+    expect(r).toEqual({ amountPaid: 800, status: "open" });
+  });
+
+  it("restore: a payment that was pending before being voided restores to no revenue contribution", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "voided", amount: 300 }, { status: "pending", amount: 300 });
+    expect(r).toEqual({ amountPaid: 500, status: "open" }); // unchanged — pending never contributed
+  });
+
+  it("delete: after=null un-applies the full amount, identical to a void", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 500 }, null);
+    expect(r).toEqual({ amountPaid: 0, status: "open" });
+  });
+
+  it("delete of a non-revenue payment (pending/failed) never touches amountPaid", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "pending", amount: 500 }, null);
+    expect(r).toEqual({ amountPaid: 500, status: "open" });
+  });
+
+  it("editing a payment that isn't succeeded before or after is a no-op", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "failed", amount: 300 }, { status: "refunded", amount: 900 });
+    expect(r).toEqual({ amountPaid: 500, status: "open" });
+  });
+
+  it("newPaid crossing the total marks the invoice paid", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 500 }, { status: "succeeded", amount: 1000 });
+    expect(r).toEqual({ amountPaid: 1000, status: "paid" });
+  });
+});
+
 describe("paymentAttribution", () => {
   const invoice = { clientId: "client-A", billingFrequency: "monthly", billingMonth: "2026-07-01" };
 
@@ -217,5 +320,18 @@ describe("nextPaymentFor — the Next Payment display bug", () => {
     expect(nextPaymentFor({ ...base, status: "paused" }, neverCollected)).toBeNull();
     expect(nextPaymentFor({ ...base, status: "canceled" }, neverCollected)).toBeNull();
     expect(nextPaymentFor({ ...base, frequency: "yearly" }, neverCollected)).toBeNull();
+  });
+
+  it("day-31 clamp also advances correctly: after collecting February, next shows March 31", () => {
+    const sub = { ...base, paymentDay: 31, startDate: "2026-01-01" };
+    const collectedFeb = (month: string) => month === "2026-02-01";
+    const info = nextPaymentFor(sub, collectedFeb, new Date("2026-03-05T00:00:00Z"));
+    expect(info).toEqual({ dueDate: "2026-03-31", late: false, collected: true });
+  });
+
+  it("no payment day set = documented day-1 convention (the cycle bills on the 1st), not a missing date", () => {
+    const sub = { ...base, paymentDay: null };
+    const info = nextPaymentFor(sub, neverCollected, new Date("2026-07-20T00:00:00Z"));
+    expect(info?.dueDate).toBe("2026-07-01");
   });
 });

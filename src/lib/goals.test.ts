@@ -232,3 +232,32 @@ describe("manual metrics", () => {
     expect(c.status).toBe("achieved");
   });
 });
+
+describe("computeGoal — leap year and month rollover", () => {
+  it("a February goal in a leap year has 29 total days and counts Feb 29 as the last elapsed day", () => {
+    const { start, end } = monthPeriod(2028, 2); // 2028 is a leap year
+    expect({ start, end }).toEqual({ start: "2028-02-01", end: "2028-02-29" });
+    const c = computeGoal({ current: 2900, target: 2900, periodStart: start, periodEnd: end, today: "2028-02-29" });
+    expect(c.totalDays).toBe(29);
+    expect(c.elapsedDays).toBe(29);
+    expect(c.status).toBe("achieved");
+  });
+
+  it("a February goal in a non-leap year has 28 total days", () => {
+    const { start, end } = monthPeriod(2026, 2);
+    const c = computeGoal({ current: 0, target: 100, periodStart: start, periodEnd: end, today: "2026-02-15" });
+    expect(c.totalDays).toBe(28);
+  });
+
+  it("the day after a monthly period ends is 'ended', even across a month/year rollover", () => {
+    const { start, end } = monthPeriod(2026, 12);
+    expect(computeGoal({ current: 500, target: 1000, periodStart: start, periodEnd: end, today: "2027-01-01" }).periodState).toBe("ended");
+    expect(computeGoal({ current: 500, target: 1000, periodStart: start, periodEnd: end, today: "2026-12-31" }).periodState).toBe("active");
+  });
+
+  it("the day before a monthly period starts is 'upcoming', even across a year rollover", () => {
+    const { start, end } = monthPeriod(2027, 1);
+    expect(computeGoal({ current: 0, target: 1000, periodStart: start, periodEnd: end, today: "2026-12-31" }).periodState).toBe("upcoming");
+    expect(computeGoal({ current: 0, target: 1000, periodStart: start, periodEnd: end, today: "2027-01-01" }).periodState).toBe("active");
+  });
+});

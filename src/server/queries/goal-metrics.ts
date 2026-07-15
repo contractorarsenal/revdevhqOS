@@ -3,6 +3,8 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { payments, clients, leads, projects, tasks } from "@/lib/db/schema";
 import type { GoalMetricType } from "@/lib/goals";
+import type { Period } from "@/lib/goals";
+import { periodUtcBounds, revenuePaymentInPeriod } from "./payment-period";
 
 /**
  * Automatic goal-metric sources. Deliberately NOT "server-only" and
@@ -10,10 +12,13 @@ import type { GoalMetricType } from "@/lib/goals";
  * the exact same query builders the app runs in production.
  *
  * Semantics:
- * - revenue_collected: succeeded payments only (the same rule as
- *   isRevenuePayment in finance/metrics) — voided/pending/failed/refunded
- *   payments and expected subscription revenue never count. Attribution is
- *   by paid_at, matching the reports pages.
+ * - revenue_collected: succeeded payments whose authoritative revenue
+ *   period falls inside the goal period — billing_month when set (a July
+ *   subscription collected August 2 counts toward July), otherwise the
+ *   workspace-local date of paid_at. One rule, shared with the dashboard
+ *   and reports via revenuePaymentInPeriod / paymentBelongsToPeriod.
+ *   Voided/pending/failed/refunded payments and expected subscription
+ *   revenue never count.
  * - new_clients: clients CREATED in the period. Archiving later does not
  *   erase the historical acquisition, so archived clients still count.
  * - new_leads: leads created in the period (same reasoning).
@@ -21,8 +26,9 @@ import type { GoalMetricType } from "@/lib/goals";
  *   Projects completed before this release predate the completed_at column
  *   and cannot be attributed to a period (documented limitation).
  *
- * Bounds are UTC instants for the workspace-local period: start inclusive,
- * end exclusive (the first instant of the day after the period ends).
+ * The period is the goal's inclusive workspace-local calendar dates; the
+ * timestamp-based metrics compare against its UTC window (start inclusive,
+ * end exclusive — the first instant of the day after the period ends).
  */
 export type MetricDb = PgDatabase<any, any, any>;
 export type UtcBounds = { start: Date; end: Date };
@@ -31,19 +37,16 @@ export async function metricValueInPeriod(
   db: MetricDb,
   workspaceId: string,
   metric: GoalMetricType,
-  bounds: UtcBounds
+  period: Period,
+  timezone: string
 ): Promise<number> {
+  const bounds = periodUtcBounds(period, timezone);
   switch (metric) {
     case "revenue_collected": {
       const [row] = await db
         .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)` })
         .from(payments)
-        .where(and(
-          eq(payments.workspaceId, workspaceId),
-          eq(payments.status, "succeeded"),
-          gte(payments.paidAt, bounds.start),
-          lt(payments.paidAt, bounds.end)
-        ));
+        .where(revenuePaymentInPeriod(workspaceId, period, timezone));
       return Number(row?.total ?? 0);
     }
     case "new_clients": {

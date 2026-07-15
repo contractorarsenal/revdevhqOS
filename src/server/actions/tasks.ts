@@ -8,6 +8,7 @@ import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { taskSchema } from "@/lib/validation";
 import { assertWorkspaceRelations } from "@/server/workspace-guards";
+import { revalidateGoalPaths } from "./revalidate-goals";
 
 async function ownedTask(workspaceId: string, taskId: string) {
   const [row] = await db
@@ -21,8 +22,8 @@ async function ownedTask(workspaceId: string, taskId: string) {
 
 function revalidateTaskPaths(clientId?: string | null) {
   revalidatePath("/tasks");
-  revalidatePath("/dashboard");
   if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidateGoalPaths(); // tasks_completed goal metric; also covers "/dashboard"
 }
 
 function taskValues(data: ReturnType<typeof taskSchema.parse>) {

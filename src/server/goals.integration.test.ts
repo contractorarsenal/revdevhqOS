@@ -15,7 +15,6 @@ import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { businessGoals, goalProgressUpdates } from "@/lib/db/schema";
 import { metricValueInPeriod } from "@/server/queries/goal-metrics";
-import { zonedTimeToUtc } from "@/lib/date-tz";
 
 const TZ = "America/Los_Angeles";
 let client: PGlite;
@@ -46,6 +45,7 @@ beforeAll(async () => {
       workspace_id uuid NOT NULL,
       amount numeric(12,2) NOT NULL,
       status text NOT NULL,
+      billing_month date,
       paid_at timestamptz NOT NULL
     );
     CREATE TABLE clients (
@@ -227,10 +227,7 @@ describe("workspace isolation and history", () => {
 
 describe("automatic metrics run the production query builders", () => {
   // July 2026 in America/Los_Angeles: [Jul 1 07:00 UTC, Aug 1 07:00 UTC)
-  const bounds = {
-    start: zonedTimeToUtc("2026-07-01", "00:00", TZ),
-    end: zonedTimeToUtc("2026-08-01", "00:00", TZ),
-  };
+  const july = { start: "2026-07-01", end: "2026-07-31" };
 
   it("revenue counts only succeeded payments — voided, pending, failed, refunded never count", async () => {
     await client.exec(`
@@ -243,7 +240,7 @@ describe("automatic metrics run the production query builders", () => {
         ('${WS1}', 666,  'refunded',  '2026-07-14T12:00:00Z'),
         ('${WS2}', 4444, 'succeeded', '2026-07-15T12:00:00Z');
     `);
-    const total = await metricValueInPeriod(db, WS1, "revenue_collected", bounds);
+    const total = await metricValueInPeriod(db, WS1, "revenue_collected", july, TZ);
     expect(total).toBe(7400); // matches the spec example; other workspace excluded
   });
 
@@ -256,7 +253,7 @@ describe("automatic metrics run the production query builders", () => {
         ('${WS1}', 300, 'succeeded', '2026-08-01T06:59:59Z'),
         ('${WS1}', 400, 'succeeded', '2026-08-01T07:00:00Z');
     `);
-    const total = await metricValueInPeriod(db, WS1, "revenue_collected", bounds);
+    const total = await metricValueInPeriod(db, WS1, "revenue_collected", july, TZ);
     expect(total).toBe(7400 + 200 + 300); // 100 (before) and 400 (after) excluded
   });
 
@@ -268,7 +265,7 @@ describe("automatic metrics run the production query builders", () => {
         ('${WS1}', '2026-06-15T12:00:00Z', NULL),
         ('${WS2}', '2026-07-07T12:00:00Z', NULL);
     `);
-    expect(await metricValueInPeriod(db, WS1, "new_clients", bounds)).toBe(2);
+    expect(await metricValueInPeriod(db, WS1, "new_clients", july, TZ)).toBe(2);
   });
 
   it("new leads counts creations in the period", async () => {
@@ -277,7 +274,7 @@ describe("automatic metrics run the production query builders", () => {
         ('${WS1}', '2026-07-08T12:00:00Z'),
         ('${WS1}', '2026-08-02T12:00:00Z');
     `);
-    expect(await metricValueInPeriod(db, WS1, "new_leads", bounds)).toBe(1);
+    expect(await metricValueInPeriod(db, WS1, "new_leads", july, TZ)).toBe(1);
   });
 
   it("tasks completed counts completed_at inside the period", async () => {
@@ -288,7 +285,7 @@ describe("automatic metrics run the production query builders", () => {
         ('${WS1}', NULL),
         ('${WS1}', '2026-06-09T12:00:00Z');
     `);
-    expect(await metricValueInPeriod(db, WS1, "tasks_completed", bounds)).toBe(2);
+    expect(await metricValueInPeriod(db, WS1, "tasks_completed", july, TZ)).toBe(2);
   });
 
   it("projects completed uses the newly-added completed_at column", async () => {
@@ -298,6 +295,6 @@ describe("automatic metrics run the production query builders", () => {
         ('${WS1}', 'completed', NULL),
         ('${WS1}', 'active', NULL);
     `);
-    expect(await metricValueInPeriod(db, WS1, "projects_completed", bounds)).toBe(1);
+    expect(await metricValueInPeriod(db, WS1, "projects_completed", july, TZ)).toBe(1);
   });
 });

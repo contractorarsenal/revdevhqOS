@@ -101,19 +101,29 @@ export const serviceSchema = z.object({
   defaultFrequency: z.enum(["one_time", "weekly", "monthly", "quarterly", "yearly"]).default("monthly"),
 });
 
-export const subscriptionSchema = z.object({
-  clientId: z.string().uuid(),
-  serviceId: z.string().uuid(),
+// Days 29-31 are allowed: billing math clamps to the last day of shorter
+// months (Feb 28/29, 30-day months) via dateOnPaymentDay.
+const paymentDayField = z
+  .union([z.literal(""), z.coerce.number().int().min(1).max(31)])
+  .transform((v) => (v === "" ? null : v))
+  .nullable()
+  .optional();
+
+/** Editable billing terms of an existing subscription. Deliberately has no
+ * clientId/serviceId: a subscription can never be re-attributed to another
+ * client or service by editing it. */
+export const subscriptionEditSchema = z.object({
   amount: moneyField,
   frequency: z.enum(["one_time", "weekly", "monthly", "quarterly", "yearly"]).default("monthly"),
   status: z.enum(["trial", "active", "past_due", "paused", "canceled", "completed"]).default("active"),
   startDate: z.string().min(1, "Start date is required"),
   nextBillingDate: optionalDate,
-  paymentDay: z
-    .union([z.literal(""), z.coerce.number().int().min(1).max(28)])
-    .transform((v) => (v === "" ? null : v))
-    .nullable()
-    .optional(),
+  paymentDay: paymentDayField,
+});
+
+export const subscriptionSchema = subscriptionEditSchema.extend({
+  clientId: z.string().uuid(),
+  serviceId: z.string().uuid(),
 });
 
 export const expenseSchema = z.object({

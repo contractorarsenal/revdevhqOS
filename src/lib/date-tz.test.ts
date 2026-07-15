@@ -60,6 +60,36 @@ describe("dayBoundsInTimezone", () => {
     const { start } = dayBoundsInTimezone("America/Los_Angeles", "2026-07-10");
     expect(start.toISOString()).toBe("2026-07-10T07:00:00.000Z"); // midnight PDT = 07:00 UTC
   });
+
+  it("spring-forward day (America/Los_Angeles, 2026-03-08) is 23 hours, not 24", () => {
+    const { start, end } = dayBoundsInTimezone("America/Los_Angeles", "2026-03-08");
+    expect(start.toISOString()).toBe("2026-03-08T08:00:00.000Z"); // midnight PST = UTC-8
+    expect(end.toISOString()).toBe("2026-03-09T07:00:00.000Z"); // next midnight is already PDT = UTC-7
+    expect(end.getTime() - start.getTime()).toBe(23 * 60 * 60 * 1000);
+  });
+
+  it("fall-back day (America/Los_Angeles, 2026-11-01) is 25 hours, not 24", () => {
+    const { start, end } = dayBoundsInTimezone("America/Los_Angeles", "2026-11-01");
+    expect(start.toISOString()).toBe("2026-11-01T07:00:00.000Z"); // midnight PDT = UTC-7
+    expect(end.toISOString()).toBe("2026-11-02T08:00:00.000Z"); // next midnight is already PST = UTC-8
+    expect(end.getTime() - start.getTime()).toBe(25 * 60 * 60 * 1000);
+  });
+});
+
+describe("todayInTimezone — across a DST transition", () => {
+  it("stays on the spring-forward date on both sides of the 2 AM -> 3 AM jump", () => {
+    // 1:59 AM PST, one minute before the jump
+    expect(todayInTimezone("America/Los_Angeles", new Date("2026-03-08T09:59:00Z"))).toBe("2026-03-08");
+    // 3:01 AM PDT, one minute after — clocks skip 2:00-2:59 AM entirely, but the calendar date doesn't jump
+    expect(todayInTimezone("America/Los_Angeles", new Date("2026-03-08T10:01:00Z"))).toBe("2026-03-08");
+  });
+
+  it("stays on the fall-back date across the repeated 1 AM hour", () => {
+    // 1:30 AM PDT (first pass, before falling back)
+    expect(todayInTimezone("America/Los_Angeles", new Date("2026-11-01T08:30:00Z"))).toBe("2026-11-01");
+    // 1:30 AM PST (second pass, same wall-clock time repeated after falling back)
+    expect(todayInTimezone("America/Los_Angeles", new Date("2026-11-01T09:30:00Z"))).toBe("2026-11-01");
+  });
 });
 
 describe("toDateOnlyString", () => {

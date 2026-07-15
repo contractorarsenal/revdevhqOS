@@ -119,7 +119,7 @@ export function SubscriptionFormDialog({
               </div>
               <div className="space-y-1">
                 <Label>Payment day of month</Label>
-                <Input type="number" min="1" max="28" {...form.register("paymentDay")} placeholder="e.g. 5" />
+                <Input type="number" min="1" max="31" {...form.register("paymentDay")} placeholder="e.g. 5" />
               </div>
             </div>
             {serverError && <p className="text-sm text-destructive">{serverError}</p>}
