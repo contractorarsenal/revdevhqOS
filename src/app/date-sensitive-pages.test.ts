@@ -20,6 +20,7 @@ const DATE_SENSITIVE_PAGES = [
   "src/app/(dashboard)/goals/[id]/page.tsx",
   "src/app/(dashboard)/billing/page.tsx",
   "src/app/(dashboard)/reports/page.tsx",
+  "src/app/(dashboard)/reports/monthly/page.tsx",
   "src/app/(dashboard)/clients/[id]/page.tsx",
 ];
 
