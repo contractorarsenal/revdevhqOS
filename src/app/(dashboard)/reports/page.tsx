@@ -8,8 +8,10 @@ import { FinancialAmount } from "@/components/shared/financial-amount";
 import { MrrTrendChart, CollectedChart } from "@/features/reports/charts";
 import { formatMoney } from "@/lib/finance/metrics";
 import { EmptyState } from "@/components/shared/empty-state";
+import { Button } from "@/components/ui/button";
 import { todayInTimezone } from "@/lib/date-tz";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, CalendarRange } from "lucide-react";
+import Link from "next/link";
 
 // Date-sensitive: month boundaries and "this month" totals must be computed
 // at request time, never frozen by any static/ISR optimization.
@@ -34,7 +36,11 @@ export default async function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="Reports" description="Revenue, retention, and pipeline reporting — computed from live records." />
+      <PageHeader title="Reports" description="Revenue, retention, and pipeline reporting — computed from live records.">
+        <Button asChild size="sm" variant="outline" className="gap-1.5">
+          <Link href="/reports/monthly"><CalendarRange className="size-3.5" /> Monthly Report</Link>
+        </Button>
+      </PageHeader>
 
       <MetricGrid>
         <MetricCard label="MRR" value={formatMoney(metrics.mrr)} hint="current" />

@@ -322,6 +322,77 @@ await step("task create + complete persists", async () => {
   await page.waitForSelector("text=E2E task");
 });
 
+
+await step("mark the opportunity lost; pipeline outcome is recorded", async () => {
+  await page.goto(`${BASE}/pipeline`);
+  await page.getByText("E2E Lead LLC").first().click();
+  await page.waitForSelector("text=Mark Lost");
+  await page.getByRole("button", { name: "Mark Lost" }).click();
+  await page.waitForSelector("text=Marked lost");
+});
+
+await step("add an expense for this month", async () => {
+  await page.goto(`${BASE}/expenses`);
+  await page.getByRole("button", { name: "Add Expense" }).first().click();
+  await page.fill('input[placeholder="Adobe Creative Cloud"]', "E2E Tools Subscription");
+  await page.locator('select[name="category"]').selectOption("tools");
+  await page.locator('input[name="amount"]').fill("150");
+  await page.getByRole("button", { name: "Add expense", exact: true }).click();
+  await page.waitForSelector("text=Expense");
+});
+
+await step("Reports page links to the Monthly Report", async () => {
+  await page.goto(`${BASE}/reports`);
+  await page.getByRole("link", { name: /Monthly Report/ }).click();
+  await page.waitForURL("**/reports/monthly**");
+  await page.waitForSelector("text=Monthly Report");
+});
+
+await step("Monthly Report: current month matches Goals/Dashboard revenue, new clients, new leads, tasks, expenses, and the goal card", async () => {
+  await page.goto(`${BASE}/reports/monthly`);
+  const body = await page.textContent("body");
+  if (!body.includes("$1,322")) throw new Error("revenue does not match the $1,322 established on /goals earlier");
+  if (!body.includes("E2E Monthly Revenue")) throw new Error("goal card missing for the current month");
+  if (!body.includes("E2E Verification Co.")) throw new Error("revenue-by-client breakdown missing the test client");
+  if (!body.includes("$150")) throw new Error("expense not reflected in the report");
+  await page.waitForSelector("text=Profit");
+  await page.waitForSelector("text=Margin");
+  // 1 new client, 1 new lead, 1 completed task, 1 lost opportunity this month.
+  const newClientsCard = await page.locator("text=New clients").locator("..").textContent();
+  if (!newClientsCard.includes("1")) throw new Error(`expected 1 new client, card said: ${newClientsCard}`);
+});
+
+await step("Monthly Report charts render (revenue/expense/profit, revenue by client, goal progress)", async () => {
+  const svgCount = await page.locator("svg.recharts-surface").count();
+  if (svgCount < 2) throw new Error(`expected at least 2 rendered chart SVGs, found ${svgCount}`);
+  await page.waitForSelector("text=of target"); // goal progress chart label
+});
+
+await step("Monthly Report: switching to last month shows the no-goal empty state and zero revenue (goal was only set for this month)", async () => {
+  const months = await page.locator('select[aria-label="Select month"] option').allTextContents();
+  if (months.length < 2) throw new Error("month selector should offer at least this month and last month");
+  await page.selectOption('select[aria-label="Select month"]', { index: 1 });
+  await page.waitForURL(/month=\d{4}-\d{2}/);
+  await page.waitForSelector("text=No revenue goal was set for this month");
+  const body = await page.textContent("body");
+  if (!body.includes("$0")) throw new Error("expected $0 revenue for a month with no payments");
+});
+
+await step("Monthly Report renders without layout overflow on mobile, tablet, and desktop", async () => {
+  await page.goto(`${BASE}/reports/monthly`);
+  for (const viewport of [{ width: 320, height: 812 }, { width: 375, height: 812 }, { width: 430, height: 932 }, { width: 768, height: 1024 }, { width: 1024, height: 1366 }, { width: 1440, height: 950 }]) {
+    await page.setViewportSize(viewport);
+    await page.reload();
+    await page.waitForSelector("text=Monthly Report");
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    if (scrollWidth > clientWidth + 1) {
+      throw new Error(`horizontal overflow at ${viewport.width}px: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 950 });
+});
+
 await step("sign out; protected routes redirect", async () => {
   await page.getByTitle("Sign out").click();
   await page.waitForURL("**/sign-in", { timeout: 20000 });
