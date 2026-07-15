@@ -123,6 +123,31 @@ export function isRevenuePayment(status: string): boolean {
 }
 
 /**
+ * Recalculates an invoice's paid amount and status after ANY change to one
+ * of its linked payments — create, edit (amount/status), void, restore, or
+ * delete. Pure: returns the new amountPaid/status without touching the
+ * database. `before`/`after` are each null when the payment didn't exist in
+ * that state (before=null on create, after=null on hard delete); only the
+ * revenue contribution (succeeded-status amount) of each side matters, so
+ * e.g. editing a payment's amount while it stays "succeeded" nets out to
+ * the same delta as void+recreate would.
+ */
+export function recalcInvoiceForPaymentChange(
+  invoice: { total: string | number; amountPaid: string | number; status: string },
+  before: { status: string; amount: string | number } | null,
+  after: { status: string; amount: string | number } | null
+): { amountPaid: number; status: string } {
+  const beforeContribution = before && isRevenuePayment(before.status) ? toAmount(before.amount) : 0;
+  const afterContribution = after && isRevenuePayment(after.status) ? toAmount(after.amount) : 0;
+  const newPaid = roundCents(Math.max(0, toAmount(invoice.amountPaid) - beforeContribution + afterContribution));
+  const paidInFull = newPaid >= toAmount(invoice.total) && toAmount(invoice.total) > 0;
+  let status = invoice.status;
+  if (invoice.status === "paid" && !paidInFull) status = "open";
+  if (paidInFull) status = "paid";
+  return { amountPaid: newPaid, status };
+}
+
+/**
  * Recalculates an invoice after one of its succeeded payments is voided.
  * Pure: returns the new amountPaid and status without touching the database.
  */
@@ -131,12 +156,7 @@ export function recalcInvoiceAfterVoid(invoice: {
   amountPaid: string | number;
   status: string;
 }, voidedAmount: string | number): { amountPaid: number; status: string } {
-  const newPaid = roundCents(Math.max(0, toAmount(invoice.amountPaid) - toAmount(voidedAmount)));
-  const paidInFull = newPaid >= toAmount(invoice.total) && toAmount(invoice.total) > 0;
-  let status = invoice.status;
-  if (invoice.status === "paid" && !paidInFull) status = "open";
-  if (paidInFull) status = "paid";
-  return { amountPaid: newPaid, status };
+  return recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: voidedAmount }, { status: "voided", amount: voidedAmount });
 }
 
 /**

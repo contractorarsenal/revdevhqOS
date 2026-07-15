@@ -2,12 +2,12 @@ import "server-only";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { businessGoals, goalProgressUpdates, profiles } from "@/lib/db/schema";
-import { todayInTimezone, zonedTimeToUtc, toDateOnlyString } from "@/lib/date-tz";
+import { toDateOnlyString } from "@/lib/date-tz";
 import {
-  computeGoal, periodLabel, isManualMetric, addDaysStr,
+  periodLabel, isManualMetric,
   type GoalComputation, type GoalMetricType, type GoalPeriodType,
 } from "@/lib/goals";
-import { metricValueInPeriod } from "./goal-metrics";
+import { calculateGoalSnapshot } from "./period-stats";
 
 export type GoalRow = typeof businessGoals.$inferSelect;
 
@@ -32,24 +32,24 @@ export type GoalWithProgress = {
   computation: GoalComputation;
 };
 
-/** Loads goal rows and attaches live progress: manual goals read their own
- * stored value; automatic goals aggregate real source records for the
- * goal's workspace-local period. */
+/** Loads goal rows and attaches live progress via calculateGoalSnapshot:
+ * manual goals read their own stored value; automatic goals aggregate real
+ * source records for the goal's workspace-local period. Recomputed fresh
+ * on every call — nothing about a goal's progress is cached. */
 async function withProgress(rows: GoalRow[], timezone: string): Promise<GoalWithProgress[]> {
-  const today = todayInTimezone(timezone);
   return Promise.all(
     rows.map(async (g) => {
       const periodStart = toDateOnlyString(g.periodStart)!;
       const periodEnd = toDateOnlyString(g.periodEnd)!;
       const metricType = g.metricType as GoalMetricType;
-      const manual = isManualMetric(metricType);
-      const currentValue = manual
-        ? Number(g.manualCurrentValue ?? 0)
-        : await metricValueInPeriod(db, g.workspaceId, metricType, {
-            start: zonedTimeToUtc(periodStart, "00:00", timezone),
-            end: zonedTimeToUtc(addDaysStr(periodEnd, 1), "00:00", timezone),
-          });
       const target = Number(g.targetValue);
+      const computation = await calculateGoalSnapshot(db, g.workspaceId, timezone, {
+        metricType,
+        targetValue: target,
+        manualCurrentValue: g.manualCurrentValue,
+        periodStart,
+        periodEnd,
+      });
       return {
         id: g.id,
         name: g.name,
@@ -60,15 +60,15 @@ async function withProgress(rows: GoalRow[], timezone: string): Promise<GoalWith
         periodEnd,
         periodLabel: periodLabel(g.periodType as GoalPeriodType, { start: periodStart, end: periodEnd }),
         targetValue: target,
-        currentValue,
+        currentValue: computation.current,
         isPrimary: g.isPrimary,
         status: g.status,
         color: g.color,
-        isManual: manual,
+        isManual: isManualMetric(metricType),
         createdAt: g.createdAt,
         updatedAt: g.updatedAt,
         archivedAt: g.archivedAt,
-        computation: computeGoal({ current: currentValue, target, periodStart, periodEnd, today }),
+        computation,
       };
     })
   );

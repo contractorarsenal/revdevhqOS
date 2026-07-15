@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Plus, CreditCard, FileText, DollarSign, Package, Pause, Play, XCircle, Archive, CheckCircle2, Trash2 } from "lucide-react";
+import { Plus, CreditCard, FileText, DollarSign, Package, Pause, Play, XCircle, Archive, CheckCircle2, Trash2, Pencil, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -15,7 +15,7 @@ import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMoney, invoiceBalance, isPastDue, toAmount } from "@/lib/finance/metrics";
-import { setSubscriptionStatus, setInvoiceStatus, markInvoicePaid, archiveService, voidPayment } from "@/server/actions/billing";
+import { setSubscriptionStatus, setInvoiceStatus, markInvoicePaid, archiveService, voidPayment, restorePayment, deletePayment } from "@/server/actions/billing";
 import { ServiceFormDialog } from "./service-form-dialog";
 import { SubscriptionFormDialog } from "./subscription-form-dialog";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
@@ -88,6 +88,7 @@ export function BillingView({
   const [subForm, setSubForm] = useState(Boolean(openNew) && tab === "subscriptions");
   const [invoiceForm, setInvoiceForm] = useState(Boolean(openNew) && tab === "invoices");
   const [paymentForm, setPaymentForm] = useState(Boolean(openNew) && tab === "payments");
+  const [editPayment, setEditPayment] = useState<any>(null);
 
   const suggestedNumber = `INV-${String(1000 + invoices.length + 1)}`;
   const [payType, setPayType] = useState("all");
@@ -110,6 +111,26 @@ export function BillingView({
       return;
     }
     toast.success("Payment removed.");
+    router.refresh();
+  }
+
+  async function restorePaymentRow(payment: any) {
+    const result = await restorePayment(payment.id);
+    if (!result.ok) {
+      toast.error(result.error ?? "Could not restore the payment.");
+      return;
+    }
+    toast.success("Payment restored.");
+    router.refresh();
+  }
+
+  async function deletePaymentRow(payment: any) {
+    const result = await deletePayment(payment.id);
+    if (!result.ok) {
+      toast.error(result.error ?? "Could not delete the payment.");
+      return;
+    }
+    toast.success("Payment deleted.");
     router.refresh();
   }
   const [invType, setInvType] = useState("all");
@@ -255,24 +276,46 @@ export function BillingView({
       cell: ({ row }) => {
         const p = row.original;
         return (
-          <span className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+          <span className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
             {p.status !== "voided" ? (
-              <ConfirmationDialog
-                trigger={
-                  <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Remove payment">
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                }
-                title="Remove payment?"
-                description="Are you sure you want to remove this payment? This will remove it from billing totals and reports, but keep a record in case it needs to be reviewed later."
-                confirmLabel="Remove payment"
-                destructive
-                onConfirm={() => removePayment(p)}
-              />
+              <>
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Edit payment" onClick={() => setEditPayment(p)}>
+                  <Pencil className="size-3.5" />
+                </Button>
+                <ConfirmationDialog
+                  trigger={
+                    <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Remove payment">
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  }
+                  title="Remove payment?"
+                  description="Are you sure you want to remove this payment? This will remove it from billing totals and reports, but keep a record in case it needs to be reviewed later."
+                  confirmLabel="Remove payment"
+                  destructive
+                  onConfirm={() => removePayment(p)}
+                />
+              </>
             ) : (
-              <span className="text-[11px] text-muted-foreground">
-                removed {p.voidedAt ? new Date(p.voidedAt).toLocaleDateString() : ""}
-              </span>
+              <>
+                <span className="mr-1 text-[11px] text-muted-foreground">
+                  removed {p.voidedAt ? new Date(p.voidedAt).toLocaleDateString() : ""}
+                </span>
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Restore payment" onClick={() => restorePaymentRow(p)}>
+                  <RotateCcw className="size-3.5" />
+                </Button>
+                <ConfirmationDialog
+                  trigger={
+                    <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Delete permanently">
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  }
+                  title="Delete this payment permanently?"
+                  description="This removes the record entirely — unlike removing, it cannot be restored."
+                  confirmLabel="Delete permanently"
+                  destructive
+                  onConfirm={() => deletePaymentRow(p)}
+                />
+              </>
             )}
           </span>
         );
@@ -401,6 +444,13 @@ export function BillingView({
       <SubscriptionFormDialog open={subForm} onOpenChange={setSubForm} clients={clients} services={services.filter((s) => !s.archivedAt)} />
       <InvoiceFormDialog open={invoiceForm} onOpenChange={setInvoiceForm} clients={clients} suggestedNumber={suggestedNumber} />
       <PaymentFormDialog open={paymentForm} onOpenChange={setPaymentForm} clients={clients} invoices={invoices} />
+      <PaymentFormDialog
+        open={Boolean(editPayment)}
+        onOpenChange={(o) => !o && setEditPayment(null)}
+        clients={clients}
+        invoices={invoices}
+        payment={editPayment}
+      />
     </div>
   );
 }

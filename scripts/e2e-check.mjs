@@ -108,6 +108,92 @@ await step("invoice + payment update balances", async () => {
   await page.waitForSelector("text=paid");
 });
 
+await step("create Monthly Revenue goal; it already reflects the $500 from the earlier invoice payment", async () => {
+  await page.goto(`${BASE}/goals?new=1`);
+  await page.fill('input[placeholder="Monthly Revenue"]', "E2E Monthly Revenue");
+  await page.fill('input[placeholder="10000"]', "10000");
+  await page.getByRole("button", { name: "Create goal" }).click();
+  await page.waitForSelector("text=Goal created");
+  await page.reload();
+  await page.waitForSelector("text=E2E Monthly Revenue");
+  const body = await page.textContent("body");
+  if (!body.includes("$500")) throw new Error(`expected the goal to already show $500 collected; body did not contain it`);
+});
+
+await step("recording a payment on /billing updates the goal reached via a real sidebar navigation (not a hard reload)", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.getByRole("button", { name: /record payment/i }).first().click();
+  await page.locator('select[name="clientId"]').selectOption({ label: "E2E Verification Co." });
+  await page.locator('input[name="amount"]').fill("300");
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+  await page.waitForSelector("text=Payment recorded");
+  // Real user flow: click the sidebar link (client-side navigation), never page.goto —
+  // this is the exact path that used to serve a stale cached /goals RSC payload
+  // before every payment mutation started revalidating "/goals" and "/goals/[id]".
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$800"); // 500 + 300
+});
+
+await step("editing that payment's amount updates the goal immediately", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.locator("tr", { hasText: "$300" }).getByTitle("Edit payment").click();
+  await page.locator('input[name="amount"]').fill("600");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Payment updated");
+  await page.locator('a[href="/dashboard"]').first().click();
+  await page.waitForURL("**/dashboard");
+  await page.waitForSelector("text=$1,100"); // 500 + 600
+});
+
+await step("voiding that payment removes it from the goal immediately", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.locator("tr", { hasText: "$600" }).getByTitle("Remove payment").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove payment" }).click();
+  await page.waitForSelector("text=Payment removed");
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$500"); // back to just the original invoice payment
+});
+
+await step("restoring that payment brings it back into the goal immediately", async () => {
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.getByRole("button", { name: "Removed" }).click();
+  await page.locator("tr", { hasText: "$600" }).getByTitle("Restore payment").click();
+  await page.waitForSelector("text=Payment restored");
+  await page.locator('a[href="/dashboard"]').first().click();
+  await page.waitForURL("**/dashboard");
+  await page.waitForSelector("text=$1,100"); // 500 + 600 again
+});
+
+await step("goal detail page shows live pace/projection stats with a real computed days-remaining value", async () => {
+  await page.goto(`${BASE}/goals`);
+  await page.getByText("E2E Monthly Revenue").first().click();
+  await page.waitForSelector("text=Required pace");
+  await page.waitForSelector("text=Days remaining");
+  const daysRemainingText = (await page.locator('dt:has-text("Days remaining") + dd').textContent())?.trim();
+  // Must render some real computed value (a non-negative integer, "Period ended",
+  // or "Starts <date>") — not blank, "undefined", "NaN", or a suspicious
+  // constant total-days-in-month value on a day that isn't day one of the month.
+  if (!daysRemainingText || /undefined|NaN/i.test(daysRemainingText)) {
+    throw new Error(`days remaining did not render a real value: "${daysRemainingText}"`);
+  }
+});
+
+await step("goal cards render without layout overflow on mobile, tablet, and desktop", async () => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 834, height: 1194 }, { width: 1440, height: 950 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${BASE}/dashboard`);
+    await page.waitForSelector("text=E2E Monthly Revenue");
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    if (scrollWidth > clientWidth + 1) {
+      throw new Error(`horizontal overflow at ${viewport.width}px: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 950 });
+});
+
 await step("lead → opportunity conversion", async () => {
   await page.goto(`${BASE}/leads`);
   await page.getByRole("button", { name: "Add Lead" }).first().click();

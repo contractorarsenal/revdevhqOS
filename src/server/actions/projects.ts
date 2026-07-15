@@ -8,6 +8,7 @@ import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { assertWorkspaceClient, assertWorkspaceMember } from "@/server/workspace-guards";
 import { projectSchema } from "@/lib/validation";
 import { logActivity } from "@/server/activity";
+import { revalidateGoalPaths } from "./revalidate-goals";
 
 async function ownedProject(workspaceId: string, projectId: string) {
   const [row] = await db
@@ -48,6 +49,7 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
       metadata: { name: data.name },
     });
     revalidatePath("/projects");
+    if (data.status === "completed") revalidateGoalPaths(); // projects_completed goal metric
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     return actionError(err);
@@ -85,6 +87,9 @@ export async function updateProject(projectId: string, input: unknown): Promise<
 
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
+    // projects_completed goal metric: revalidate on any transition into or
+    // out of "completed" (reopening a project un-counts it too).
+    if (data.status === "completed" || existing.completedAt) revalidateGoalPaths();
     return { ok: true };
   } catch (err) {
     return actionError(err);

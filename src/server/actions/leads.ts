@@ -8,6 +8,7 @@ import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { leadSchema } from "@/lib/validation";
 import { assertWorkspaceMember, assertWorkspaceClient } from "@/server/workspace-guards";
+import { revalidateGoalPaths } from "./revalidate-goals";
 
 async function ownedLead(workspaceId: string, leadId: string) {
   const [row] = await db
@@ -53,6 +54,7 @@ export async function createLead(input: unknown): Promise<ActionResult<{ id: str
       metadata: { company: data.company },
     });
     revalidatePath("/leads");
+    revalidateGoalPaths(); // new_leads goal metric counts creation time
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     return actionError(err);

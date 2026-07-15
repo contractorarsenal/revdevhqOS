@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, ne } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, type Tx } from "@/lib/db";
 import { services, subscriptions, invoices, invoiceItems, payments, clients, expenses } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema, expenseSchema } from "@/lib/validation";
-import { roundCents, toAmount, recalcInvoiceAfterVoid, paymentAttribution, currentDueMonth } from "@/lib/finance/metrics";
+import { roundCents, toAmount, recalcInvoiceForPaymentChange, paymentAttribution, currentDueMonth } from "@/lib/finance/metrics";
+import { revalidateGoalPaths as revalidateGoals } from "./revalidate-goals";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");
@@ -260,6 +261,7 @@ export async function markInvoicePaid(invoiceId: string): Promise<ActionResult> 
       metadata: { amount: balance, invoice: inv.number },
     });
     revalidateBilling(inv.clientId);
+    revalidateGoals();
     return { ok: true };
   } catch (err) {
     return actionError(err);
@@ -332,6 +334,98 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
       metadata: { amount: data.amount, method: data.method ?? undefined },
     });
     revalidateBilling(attribution.clientId);
+    revalidateGoals();
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+async function ownedPayment(workspaceId: string, paymentId: string) {
+  const [row] = await db
+    .select()
+    .from(payments)
+    .where(and(eq(payments.id, paymentId), eq(payments.workspaceId, workspaceId)))
+    .limit(1);
+  if (!row) throw new Error("Payment not found in this workspace.");
+  return row;
+}
+
+/** Applies a payment's before/after revenue delta to its linked invoice, if any. */
+async function recalcLinkedInvoice(
+  tx: Tx,
+  invoiceId: string | null,
+  before: { status: string; amount: string | number } | null,
+  after: { status: string; amount: string | number } | null
+) {
+  if (!invoiceId) return;
+  const [inv] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  if (!inv) return;
+  const next = recalcInvoiceForPaymentChange(inv, before, after);
+  await tx
+    .update(invoices)
+    .set({ amountPaid: String(next.amountPaid), status: next.status as typeof inv.status })
+    .where(eq(invoices.id, inv.id));
+}
+
+/**
+ * Edits an existing payment's amount, status, date, billing month (i.e.
+ * "move to another month"), method, or reference. The linked invoice (if
+ * any) is recalculated from the before/after revenue delta in the same
+ * transaction — editing a $500 succeeded payment down to $300 un-applies
+ * $200 from the invoice; flipping status away from "succeeded" un-applies
+ * the full amount, matching a void.
+ */
+export async function updatePayment(paymentId: string, input: unknown): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("manager");
+    const existing = await ownedPayment(ctx.workspace.id, paymentId);
+    if (existing.status === "voided") throw new Error("Restore this payment before editing it.");
+    const data = paymentSchema.parse(input);
+
+    // Invoice-linked payments keep the invoice as authoritative for type
+    // and billing month, same rule as recordPayment — editing the form
+    // can't detach a payment from its invoice's billing period.
+    let paymentType: string = data.paymentType;
+    let billingMonth: string | null = data.billingMonth ? `${data.billingMonth}-01` : existing.billingMonth;
+    if (existing.invoiceId) {
+      const [inv] = await db.select().from(invoices).where(eq(invoices.id, existing.invoiceId)).limit(1);
+      if (inv) {
+        const attribution = paymentAttribution(inv, { paymentType: data.paymentType, billingMonth: data.billingMonth ? `${data.billingMonth}-01` : null });
+        paymentType = attribution.paymentType;
+        billingMonth = attribution.billingMonth ?? billingMonth;
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(payments)
+        .set({
+          amount: String(data.amount),
+          status: data.status,
+          paymentType: paymentType as typeof data.paymentType,
+          billingMonth,
+          method: data.method ?? null,
+          reference: data.reference ?? null,
+          paidAt: new Date(data.paidAt),
+        })
+        .where(eq(payments.id, paymentId));
+
+      await recalcLinkedInvoice(
+        tx,
+        existing.invoiceId,
+        { status: existing.status, amount: existing.amount },
+        { status: data.status, amount: data.amount }
+      );
+    });
+
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "payment.updated", entityType: "payment", entityId: paymentId, clientId: existing.clientId,
+      metadata: { amount: data.amount, previousAmount: Number(existing.amount) },
+    });
+    revalidateBilling(existing.clientId);
+    revalidateGoals();
     return { ok: true };
   } catch (err) {
     return actionError(err);
@@ -347,36 +441,27 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
 export async function voidPayment(paymentId: string, reason?: string): Promise<ActionResult> {
   try {
     const ctx = await authorize("admin");
-    const [payment] = await db
-      .select()
-      .from(payments)
-      .where(and(eq(payments.id, paymentId), eq(payments.workspaceId, ctx.workspace.id)))
-      .limit(1);
-    if (!payment) throw new Error("Payment not found in this workspace.");
+    const payment = await ownedPayment(ctx.workspace.id, paymentId);
     if (payment.status === "voided") throw new Error("This payment is already removed.");
 
-    const wasRevenue = payment.status === "succeeded";
     await db.transaction(async (tx) => {
       await tx
         .update(payments)
         .set({
           status: "voided",
+          previousStatus: payment.status,
           voidedAt: new Date(),
           voidedBy: ctx.user.id,
           voidReason: reason ?? null,
         })
         .where(eq(payments.id, payment.id));
 
-      if (payment.invoiceId && wasRevenue) {
-        const [inv] = await tx.select().from(invoices).where(eq(invoices.id, payment.invoiceId)).limit(1);
-        if (inv) {
-          const next = recalcInvoiceAfterVoid(inv, payment.amount);
-          await tx
-            .update(invoices)
-            .set({ amountPaid: String(next.amountPaid), status: next.status as typeof inv.status })
-            .where(eq(invoices.id, inv.id));
-        }
-      }
+      await recalcLinkedInvoice(
+        tx,
+        payment.invoiceId,
+        { status: payment.status, amount: payment.amount },
+        { status: "voided", amount: payment.amount }
+      );
     });
 
     await logActivity({
@@ -385,6 +470,73 @@ export async function voidPayment(paymentId: string, reason?: string): Promise<A
       metadata: { amount: Number(payment.amount), reason: reason ?? undefined },
     });
     revalidateBilling(payment.clientId);
+    revalidateGoals();
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Restores a voided payment to its exact status before voiding (captured
+ * on `previousStatus`), reversing the invoice recalculation from the void. */
+export async function restorePayment(paymentId: string): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("admin");
+    const payment = await ownedPayment(ctx.workspace.id, paymentId);
+    if (payment.status !== "voided") throw new Error("Only a removed payment can be restored.");
+    const restoredStatus = payment.previousStatus ?? "succeeded";
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(payments)
+        .set({ status: restoredStatus, previousStatus: null, voidedAt: null, voidedBy: null, voidReason: null })
+        .where(eq(payments.id, payment.id));
+
+      await recalcLinkedInvoice(
+        tx,
+        payment.invoiceId,
+        { status: "voided", amount: payment.amount },
+        { status: restoredStatus, amount: payment.amount }
+      );
+    });
+
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "payment.restored", entityType: "payment", entityId: payment.id, clientId: payment.clientId,
+      metadata: { amount: Number(payment.amount) },
+    });
+    revalidateBilling(payment.clientId);
+    revalidateGoals();
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Permanently deletes a payment record (unlike void, no audit trail is
+ * kept) and recalculates any linked invoice. Owners/admins only. */
+export async function deletePayment(paymentId: string): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("admin");
+    const payment = await ownedPayment(ctx.workspace.id, paymentId);
+
+    await db.transaction(async (tx) => {
+      await recalcLinkedInvoice(
+        tx,
+        payment.invoiceId,
+        { status: payment.status, amount: payment.amount },
+        null
+      );
+      await tx.delete(payments).where(eq(payments.id, payment.id));
+    });
+
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "payment.deleted", entityType: "payment", clientId: payment.clientId,
+      metadata: { amount: Number(payment.amount) },
+    });
+    revalidateBilling(payment.clientId);
+    revalidateGoals();
     return { ok: true };
   } catch (err) {
     return actionError(err);
@@ -467,6 +619,7 @@ export async function markSubscriptionCollected(subscriptionId: string): Promise
       metadata: { amount: Number(sub.amount), recurring: true, billingMonth: dueMonth },
     });
     revalidateBilling(sub.clientId);
+    revalidateGoals();
     return { ok: true };
   } catch (err) {
     return actionError(err);

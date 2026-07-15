@@ -1,0 +1,1 @@
+ALTER TABLE "payments" ADD COLUMN "previous_status" "payment_status";

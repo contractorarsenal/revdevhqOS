@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
-  isRevenuePayment, recalcInvoiceAfterVoid, paymentAttribution,
+  isRevenuePayment, recalcInvoiceAfterVoid, recalcInvoiceForPaymentChange, paymentAttribution,
   currentDueMonth, isDueLate, nextPaymentFor,
 } from "./metrics";
 
@@ -121,6 +121,61 @@ describe("payment voiding", () => {
   it("never produces a negative paid amount", () => {
     const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "200", status: "open" }, "500");
     expect(r.amountPaid).toBe(0);
+  });
+});
+
+describe("recalcInvoiceForPaymentChange — general delta recalculation for edit/void/restore/delete", () => {
+  const invoice = { total: "1000", amountPaid: "500", status: "open" };
+
+  it("create: before=null applies the full new amount", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, null, { status: "succeeded", amount: 200 });
+    expect(r).toEqual({ amountPaid: 700, status: "open" });
+  });
+
+  it("edit: raising a succeeded payment's amount applies only the delta", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 300 }, { status: "succeeded", amount: 500 });
+    expect(r).toEqual({ amountPaid: 700, status: "open" }); // 500 - 300 + 500
+  });
+
+  it("edit: lowering a succeeded payment's amount un-applies the delta and can reopen a paid invoice", () => {
+    const paid = { total: "1000", amountPaid: "1000", status: "paid" };
+    const r = recalcInvoiceForPaymentChange(paid, { status: "succeeded", amount: 400 }, { status: "succeeded", amount: 100 });
+    expect(r).toEqual({ amountPaid: 700, status: "open" });
+  });
+
+  it("edit: flipping status away from succeeded un-applies the full amount, same as a void", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 300 }, { status: "pending", amount: 300 });
+    expect(r).toEqual({ amountPaid: 200, status: "open" });
+  });
+
+  it("restore: flipping status from voided back to succeeded re-applies the amount", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "voided", amount: 300 }, { status: "succeeded", amount: 300 });
+    expect(r).toEqual({ amountPaid: 800, status: "open" });
+  });
+
+  it("restore: a payment that was pending before being voided restores to no revenue contribution", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "voided", amount: 300 }, { status: "pending", amount: 300 });
+    expect(r).toEqual({ amountPaid: 500, status: "open" }); // unchanged — pending never contributed
+  });
+
+  it("delete: after=null un-applies the full amount, identical to a void", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 500 }, null);
+    expect(r).toEqual({ amountPaid: 0, status: "open" });
+  });
+
+  it("delete of a non-revenue payment (pending/failed) never touches amountPaid", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "pending", amount: 500 }, null);
+    expect(r).toEqual({ amountPaid: 500, status: "open" });
+  });
+
+  it("editing a payment that isn't succeeded before or after is a no-op", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "failed", amount: 300 }, { status: "refunded", amount: 900 });
+    expect(r).toEqual({ amountPaid: 500, status: "open" });
+  });
+
+  it("newPaid crossing the total marks the invoice paid", () => {
+    const r = recalcInvoiceForPaymentChange(invoice, { status: "succeeded", amount: 500 }, { status: "succeeded", amount: 1000 });
+    expect(r).toEqual({ amountPaid: 1000, status: "paid" });
   });
 });
 

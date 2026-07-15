@@ -250,6 +250,10 @@ export const payments = pgTable("payments", {
   voidedAt: timestamp("voided_at", { withTimezone: true }),
   voidedBy: uuid("voided_by").references(() => profiles.id, { onDelete: "set null" }),
   voidReason: text("void_reason"),
+  // Captured at void time so restorePayment can put the payment back into
+  // its exact prior status (e.g. a voided "pending" payment restores to
+  // "pending", not "succeeded") instead of guessing.
+  previousStatus: paymentStatus("previous_status"),
   createdAt: createdAt(),
 }, (t) => [
   index("payments_workspace_paid_idx").on(t.workspaceId, t.paidAt),
