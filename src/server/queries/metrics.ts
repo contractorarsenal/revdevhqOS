@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, lt, sql, inArray, count } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, or, sql, inArray, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   subscriptions, invoices, payments, clients, opportunities, pipelineStages, tasks,
@@ -8,7 +8,11 @@ import {
 import {
   calculateMrr, calculateArr, outstandingRevenue, pastDueRevenue,
   pipelineValue, weightedPipelineValue, normalizeToMonthly, toAmount, roundCents,
+  paymentRevenueDate,
 } from "@/lib/finance/metrics";
+import { todayInTimezone, zonedTimeToUtc } from "@/lib/date-tz";
+import { monthPeriod } from "@/lib/goals";
+import { revenuePaymentInPeriod } from "./payment-period";
 
 /** Start of today / month in the workspace timezone, as UTC instants. */
 function zonedBoundaries(timezone: string) {
@@ -27,7 +31,12 @@ function zonedBoundaries(timezone: string) {
 }
 
 export async function getDashboardMetrics(workspaceId: string, timezone: string) {
-  const { dayStart, monthStart } = zonedBoundaries(timezone);
+  const { dayStart } = zonedBoundaries(timezone);
+  // Current workspace-local month, attributed by the same authoritative
+  // rule goals and reports use (billing_month first, else local paid date)
+  // — the dashboard can never disagree with the Monthly Revenue goal.
+  const today = todayInTimezone(timezone);
+  const thisMonth = monthPeriod(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
 
   const [subs, invoiceRows, todaysPayments, monthPayments, activeClientCount, oppRows, taskCounts] =
     await Promise.all([
@@ -39,6 +48,8 @@ export async function getDashboardMetrics(workspaceId: string, timezone: string)
         .select({ status: invoices.status, total: invoices.total, amountPaid: invoices.amountPaid, dueDate: invoices.dueDate })
         .from(invoices)
         .where(and(eq(invoices.workspaceId, workspaceId), inArray(invoices.status, ["open", "past_due"]))),
+      // "Collected today" is deliberately a collection-activity metric —
+      // cash that arrived today (paid_at) — not a billing-month attribution.
       db
         .select({ sum: sql<string>`coalesce(sum(${payments.amount}), 0)` })
         .from(payments)
@@ -46,7 +57,7 @@ export async function getDashboardMetrics(workspaceId: string, timezone: string)
       db
         .select({ sum: sql<string>`coalesce(sum(${payments.amount}), 0)` })
         .from(payments)
-        .where(and(eq(payments.workspaceId, workspaceId), eq(payments.status, "succeeded"), gte(payments.paidAt, monthStart))),
+        .where(revenuePaymentInPeriod(workspaceId, thisMonth, timezone)),
       db
         .select({ n: count() })
         .from(clients)
@@ -81,35 +92,42 @@ export async function getDashboardMetrics(workspaceId: string, timezone: string)
   };
 }
 
-/** Monthly collected revenue for the trailing 12 months, from payment records. */
-export async function getCollectedByMonth(workspaceId: string) {
-  const start = new Date();
-  start.setMonth(start.getMonth() - 11);
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
-  const bucket = sql`date_trunc('month', coalesce(${payments.billingMonth}::timestamp, ${payments.paidAt}))`;
-  const rows = await db
-    .select({
-      month: sql<string>`to_char(${bucket}, 'YYYY-MM')`,
-      total: sql<string>`sum(${payments.amount})`,
-    })
-    .from(payments)
-    .where(and(eq(payments.workspaceId, workspaceId), eq(payments.status, "succeeded"), gte(payments.paidAt, start)))
-    .groupBy(bucket)
-    .orderBy(bucket);
-
-  const map = new Map(rows.map((r) => [r.month, Number(r.total)]));
-  const series: { month: string; collected: number }[] = [];
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    series.push({
-      month: d.toLocaleString("en-US", { month: "short" }),
-      collected: roundCents(map.get(key) ?? 0),
-    });
+/** Monthly collected revenue for the trailing 12 workspace-local months,
+ * bucketed by the authoritative revenue date (paymentRevenueDate:
+ * billing_month first, else paid_at in the workspace timezone) — the same
+ * attribution the Monthly Revenue goal uses, so the chart and the goal can
+ * never tell different stories about a month. */
+export async function getCollectedByMonth(workspaceId: string, timezone: string) {
+  const today = todayInTimezone(timezone);
+  const monthKeys: string[] = [];
+  let [y, m] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
+  for (let i = 0; i < 12; i++) {
+    monthKeys.unshift(`${y}-${String(m).padStart(2, "0")}`);
+    m -= 1;
+    if (m === 0) { m = 12; y -= 1; }
   }
-  return series;
+  const windowStart = `${monthKeys[0]}-01`;
+  const windowStartUtc = zonedTimeToUtc(windowStart, "00:00", timezone);
+
+  const rows = await db
+    .select({ amount: payments.amount, billingMonth: payments.billingMonth, paidAt: payments.paidAt })
+    .from(payments)
+    .where(and(
+      eq(payments.workspaceId, workspaceId),
+      eq(payments.status, "succeeded"),
+      or(gte(payments.billingMonth, windowStart), and(isNull(payments.billingMonth), gte(payments.paidAt, windowStartUtc)))
+    ));
+
+  const totals = new Map<string, number>();
+  for (const r of rows) {
+    const key = paymentRevenueDate(r, timezone).slice(0, 7);
+    totals.set(key, (totals.get(key) ?? 0) + Number(r.amount));
+  }
+
+  return monthKeys.map((key) => ({
+    month: new Date(`${key}-01T00:00:00Z`).toLocaleString("en-US", { month: "short", timeZone: "UTC" }),
+    collected: roundCents(totals.get(key) ?? 0),
+  }));
 }
 
 /**

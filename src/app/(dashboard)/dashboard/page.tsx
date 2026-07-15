@@ -26,6 +26,11 @@ function greeting() {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+// Date-sensitive: days remaining, pace, and due states must be computed at
+// request time in the workspace timezone — time moves even when no mutation
+// fires a revalidation, so this page must never be statically frozen.
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
@@ -34,11 +39,11 @@ export default async function DashboardPage() {
   const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule, goals] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
-    getCollectedByMonth(wsId),
+    getCollectedByMonth(wsId, ctx.workspace.timezone),
     getRecentActivity(wsId),
     getAttentionQueue(wsId),
     listPayments(wsId),
-    listDueSubscriptions(wsId),
+    listDueSubscriptions(wsId, ctx.workspace.timezone),
     listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
     getDashboardGoals(wsId, ctx.workspace.timezone),
   ]));

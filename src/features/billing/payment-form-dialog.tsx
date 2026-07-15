@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { invoiceBalance } from "@/lib/finance/metrics";
+import { toDateOnlyString } from "@/lib/date-tz";
 
 type FormValues = z.input<typeof paymentSchema>;
 
@@ -23,7 +24,7 @@ export type InvoiceOption = {
 
 export type EditablePayment = {
   id: string; clientId: string | null; invoiceId: string | null; amount: string;
-  status: string; paymentType: string; billingMonth: string | null;
+  status: string; paymentType: string; billingMonth: string | Date | null;
   method: string | null; reference: string | null; paidAt: string | Date;
 };
 
@@ -59,7 +60,7 @@ export function PaymentFormDialog({
               amount: payment.amount,
               status: payment.status as FormValues["status"],
               paymentType: payment.paymentType as FormValues["paymentType"],
-              billingMonth: payment.billingMonth ? payment.billingMonth.slice(0, 7) : new Date().toISOString().slice(0, 7),
+              billingMonth: toDateOnlyString(payment.billingMonth)?.slice(0, 7) ?? new Date().toISOString().slice(0, 7),
               method: payment.method ?? "",
               reference: payment.reference ?? "",
               paidAt: new Date(payment.paidAt).toISOString().slice(0, 10),

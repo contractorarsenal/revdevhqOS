@@ -3,6 +3,8 @@
  * All amounts are plain numbers in workspace currency units (dollars).
  * Database `numeric` values arrive as strings — use toAmount() first.
  */
+import { formatInTimezone, toDateOnlyString } from "@/lib/date-tz";
+
 export type BillingFrequency = "one_time" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 export function toAmount(value: string | number | null | undefined): number {
@@ -120,6 +122,57 @@ export function formatMoney(value: string | number | null | undefined, currency 
  * refunded, and voided payments are excluded from every total and report. */
 export function isRevenuePayment(status: string): boolean {
   return status === "succeeded";
+}
+
+/* ========== authoritative revenue-period attribution ========== */
+
+export type RevenueDatedPayment = {
+  status: string;
+  /** date column — "YYYY-MM-DD" from node-postgres, Date from PGlite */
+  billingMonth?: string | Date | null;
+  paidAt: string | Date;
+};
+
+/**
+ * THE single authoritative rule for which calendar period a payment's
+ * revenue belongs to. Every monthly total in the product — goals, dashboard,
+ * reports, client billing, future Monthly Reports — must attribute through
+ * this rule (in TS via these helpers, in SQL via
+ * server/queries/payment-period.ts, which mirrors it and is tested to agree).
+ *
+ * - billing_month, when set, is authoritative: it records which billing
+ *   period the money is FOR (recurring collections always carry it; one-time
+ *   payments inherit it from their invoice or the operator's explicit
+ *   choice). A July subscription collected on August 2 counts toward July.
+ * - Without a billing_month, the payment counts on the workspace-local
+ *   calendar date it was actually collected (paid_at read in the workspace
+ *   timezone — never UTC slicing).
+ *
+ * The result is one calendar date per payment, so a payment belongs to
+ * exactly one period of any non-overlapping partition — it can never be
+ * counted once by paid_at and again by billing_month.
+ */
+export function paymentRevenueDate(
+  payment: Pick<RevenueDatedPayment, "billingMonth" | "paidAt">,
+  timezone: string
+): string {
+  const bm = toDateOnlyString(payment.billingMonth ?? null);
+  if (bm) return bm;
+  const paidAt = payment.paidAt instanceof Date ? payment.paidAt : new Date(payment.paidAt);
+  return formatInTimezone(paidAt, timezone).date;
+}
+
+/** Whether a payment's revenue counts toward [period.start, period.end]
+ * (inclusive workspace-local calendar dates): succeeded status AND its
+ * authoritative revenue date inside the period. */
+export function paymentBelongsToPeriod(
+  payment: RevenueDatedPayment,
+  period: { start: string; end: string },
+  timezone: string
+): boolean {
+  if (!isRevenuePayment(payment.status)) return false;
+  const date = paymentRevenueDate(payment, timezone);
+  return date >= period.start && date <= period.end;
 }
 
 /**

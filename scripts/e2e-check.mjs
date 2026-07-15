@@ -13,6 +13,7 @@ config({ path: ".env.local" });
 config({ path: ".env" });
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const RUN_START = new Date();
 const EMAIL = `e2e-${Date.now()}@revdevhqos.dev`;
 const PASSWORD = "e2e-password-123";
 
@@ -166,6 +167,94 @@ await step("restoring that payment brings it back into the goal immediately", as
   await page.waitForSelector("text=$1,100"); // 500 + 600 again
 });
 
+
+await step("a payment assigned to LAST month does not move the current-month goal", async () => {
+  const prev = new Date();
+  prev.setUTCMonth(prev.getUTCMonth() - 1);
+  const prevMonth = prev.toISOString().slice(0, 7);
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.getByRole("button", { name: /record payment/i }).first().click();
+  await page.locator('select[name="clientId"]').selectOption({ label: "E2E Verification Co." });
+  await page.locator('input[name="amount"]').fill("222");
+  await page.locator('input[name="billingMonth"]').fill(prevMonth);
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+  await page.waitForSelector("text=Payment recorded");
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$1,100"); // unchanged — the $222 belongs to last month
+});
+
+await step("editing that payment INTO the current billing month moves it into the goal", async () => {
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  await page.goto(`${BASE}/billing?tab=payments`);
+  await page.locator("tr", { hasText: "$222" }).getByTitle("Edit payment").click();
+  await page.locator('input[name="billingMonth"]').fill(thisMonth);
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Payment updated");
+  await page.locator('a[href="/goals"]').first().click();
+  await page.waitForURL("**/goals");
+  await page.waitForSelector("text=$1,322"); // 1,100 + 222
+});
+
+await step("client page: edit subscription amount, payment day, and status — values persist after reload", async () => {
+  await page.goto(`${BASE}/clients`);
+  await page.getByText("E2E Verification Co.").first().click();
+  await page.getByRole("link", { name: "View full client" }).click();
+  await page.waitForSelector("text=Active services");
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.waitForSelector("text=Edit subscription");
+  await page.locator('input[name="amount"]').fill("1250");
+  await page.locator('input[name="paymentDay"]').fill("1");
+  await page.locator('select[name="status"]').selectOption("active");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Subscription updated");
+  await page.reload();
+  await page.waitForSelector("text=$1,250");
+  await page.waitForSelector("text=day 1");
+});
+
+await step("Next payment reflects the edited payment day and the due card knows the cycle is uncollected", async () => {
+  const body = await page.textContent("body");
+  if (!body.includes("Next payment")) throw new Error("Next payment stat missing");
+  if (!/Next payment/.test(body)) throw new Error("next payment label missing");
+  // Payment day 1: the currently-owed cycle is this month's 1st (uncollected),
+  // so the client page must show a "Payment due" card for the subscription.
+  await page.waitForSelector("text=Payment due");
+  // And the dashboard-wide due card agrees.
+  await page.locator('a[href="/dashboard"]').first().click();
+  await page.waitForURL("**/dashboard");
+  await page.waitForSelector("text=Due recurring payments");
+  await page.waitForSelector("text=E2E Verification Co.");
+});
+
+await step("paused subscription shows no misleading upcoming payment", async () => {
+  await page.goto(`${BASE}/clients`);
+  await page.getByText("E2E Verification Co.").first().click();
+  await page.getByRole("link", { name: "View full client" }).click();
+  await page.waitForSelector("text=Active services");
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.waitForSelector("text=Edit subscription");
+  await page.locator('select[name="status"]').selectOption("paused");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Subscription updated");
+  await page.reload();
+  await page.waitForSelector("text=No active subscription");
+  // restore to active for the remaining steps
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.locator('select[name="status"]').selectOption("active");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForSelector("text=Subscription updated");
+});
+
+await step("client page payments list offers Edit and Remove on active payments", async () => {
+  await page.reload();
+  await page.getByRole("tab", { name: "Billing" }).click();
+  await page.waitForSelector("text=Payments");
+  const editButtons = await page.getByRole("button", { name: "Edit", exact: true }).count();
+  if (editButtons < 1) throw new Error("no Edit action on client payments list");
+  await page.waitForSelector("text=Remove");
+});
+
 await step("goal detail page shows live pace/projection stats with a real computed days-remaining value", async () => {
   await page.goto(`${BASE}/goals`);
   await page.getByText("E2E Monthly Revenue").first().click();
@@ -252,6 +341,22 @@ try {
   }
 } catch (err) {
   console.error("warning: could not clean up test user", EMAIL, err);
+}
+
+// Clean up this run's workspace row (cascades to all test data) — the auth
+// user deletion above does NOT cascade to the workspace.
+try {
+  const pg = (await import("pg")).default;
+  const url = process.env.DATABASE_URL;
+  const pool = new pg.Pool({
+    connectionString: url,
+    ssl: url.includes("supabase.co") || url.includes("supabase.com") ? { rejectUnauthorized: false } : undefined,
+  });
+  const res = await pool.query(`DELETE FROM workspaces WHERE name = 'E2E Agency' AND created_at >= $1`, [RUN_START]);
+  console.log(`cleaned up ${res.rowCount} E2E workspace(s) from this run`);
+  await pool.end();
+} catch (err) {
+  console.error("warning: could not clean up E2E workspace", err);
 }
 
 const failed = results.filter(([s]) => s === "FAIL").length;

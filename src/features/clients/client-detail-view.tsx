@@ -20,9 +20,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { invoiceBalance, isPastDue } from "@/lib/finance/metrics";
-import { formatFullDate } from "@/lib/date-tz";
+import { formatFullDate, toDateOnlyString } from "@/lib/date-tz";
 import { archiveClient, addContact, startOnboarding, toggleOnboardingStep } from "@/server/actions/clients";
-import { markSubscriptionCollected } from "@/server/actions/billing";
+import { markSubscriptionCollected, voidPayment, restorePayment } from "@/server/actions/billing";
 import { addNote } from "@/server/actions/notes";
 import { setTaskCompletion } from "@/server/actions/tasks";
 import { setSubscriptionStatus } from "@/server/actions/billing";
@@ -54,6 +54,7 @@ export function ClientDetailView({
   const [subOpen, setSubOpen] = useState(false);
   const [editSub, setEditSub] = useState<any>(null);
   const [payOpen, setPayOpen] = useState(false);
+  const [editPay, setEditPay] = useState<any>(null);
   const [invOpen, setInvOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -214,14 +215,22 @@ export function ClientDetailView({
                   <Plus className="size-3.5" /> Add subscription
                 </Button>
               </header>
-              {detail.subscriptions.length === 0 ? (
+              {billing.subscriptions.length === 0 ? (
                 <p className="px-4 py-4 text-xs text-muted-foreground">No subscriptions yet — add one to start counting MRR.</p>
               ) : (
-                detail.subscriptions.map((s: any) => (
+                /* billing.subscriptions carries the full editable row
+                   (paymentDay, dates) — detail.subscriptions is a slimmer
+                   projection that starved the edit dialog of required
+                   fields, which made Save silently no-op. */
+                billing.subscriptions.map((s: any) => (
                   <div key={s.id} className="flex items-center gap-3 border-t border-border/40 px-4 py-2.5 first:border-t-0">
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-medium">{s.serviceName}</p>
-                      <p className="text-[11.5px] text-muted-foreground">Started {s.startDate}{s.nextBillingDate ? ` · next billing ${s.nextBillingDate}` : ""}</p>
+                      <p className="text-[11.5px] text-muted-foreground">
+                        Started {toDateOnlyString(s.startDate)}
+                        {s.nextBillingDate ? ` · next billing ${toDateOnlyString(s.nextBillingDate)}` : ""}
+                        {s.paymentDay ? ` · day ${s.paymentDay}` : ""}
+                      </p>
                     </div>
                     <FinancialAmount value={s.amount} suffix={`/${s.frequency.replace("_", "-").replace("ly", "")}`} />
                     <StatusBadge status={s.status} />
@@ -324,6 +333,25 @@ export function ClientDetailView({
                     </div>
                     <FinancialAmount value={p.amount} className="text-emerald-700 dark:text-emerald-400" />
                     <StatusBadge status={p.status} />
+                    {p.status !== "voided" ? (
+                      <>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditPay(p)}>
+                          Edit
+                        </Button>
+                        <ConfirmationDialog
+                          trigger={<Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground">Remove</Button>}
+                          title="Remove payment?"
+                          description="Removes it from billing totals, reports, and goals, but keeps the record for review. It can be restored later."
+                          confirmLabel="Remove payment"
+                          destructive
+                          onConfirm={() => run(voidPayment(p.id), "Payment removed")}
+                        />
+                      </>
+                    ) : (
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => run(restorePayment(p.id), "Payment restored")}>
+                        Restore
+                      </Button>
+                    )}
                   </div>
                 ))
               )}
@@ -450,6 +478,14 @@ export function ClientDetailView({
       <SubscriptionFormDialog open={subOpen} onOpenChange={setSubOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} services={services} />
       <EventFormDialog open={scheduleOpen} onOpenChange={setScheduleOpen} defaults={{ clientId: client.id }} clients={[{ id: client.id, name: client.name }]} members={members.map((m: any) => ({ userId: m.userId, name: m.name }))} />
       <PaymentFormDialog open={payOpen} onOpenChange={setPayOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} invoices={clientInvoiceOptions} />
+      <PaymentFormDialog
+        open={Boolean(editPay)}
+        onOpenChange={(o) => !o && setEditPay(null)}
+        fixedClientId={client.id}
+        clients={[{ id: client.id, name: client.name }]}
+        invoices={clientInvoiceOptions}
+        payment={editPay}
+      />
       <SubscriptionEditDialog open={Boolean(editSub)} onOpenChange={(o) => !o && setEditSub(null)} subscription={editSub} />
       <InvoiceFormDialog open={invOpen} onOpenChange={setInvOpen} fixedClientId={client.id} clients={[{ id: client.id, name: client.name }]} suggestedNumber={`INV-${String(1000 + billing.invoices.length + 1)}`} />
 

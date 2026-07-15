@@ -3,7 +3,7 @@ import {
   normalizeToMonthly, calculateMrr, calculateArr, invoiceBalance,
   outstandingRevenue, pastDueRevenue, isPastDue, pipelineValue, weightedPipelineValue, toAmount,
   isRevenuePayment, recalcInvoiceAfterVoid, recalcInvoiceForPaymentChange, paymentAttribution,
-  currentDueMonth, isDueLate, nextPaymentFor,
+  currentDueMonth, isDueLate, nextPaymentFor, paymentRevenueDate, paymentBelongsToPeriod,
 } from "./metrics";
 
 describe("normalizeToMonthly", () => {
@@ -121,6 +121,54 @@ describe("payment voiding", () => {
   it("never produces a negative paid amount", () => {
     const r = recalcInvoiceAfterVoid({ total: "1000", amountPaid: "200", status: "open" }, "500");
     expect(r.amountPaid).toBe(0);
+  });
+});
+
+describe("paymentRevenueDate / paymentBelongsToPeriod — the authoritative revenue period", () => {
+  const july = { start: "2026-07-01", end: "2026-07-31" };
+
+  it("billing_month wins whenever set: a July subscription collected on August 2 is July revenue", () => {
+    const p = { status: "succeeded", billingMonth: "2026-07-01", paidAt: new Date("2026-08-02T18:00:00Z") };
+    expect(paymentRevenueDate(p, "America/Los_Angeles")).toBe("2026-07-01");
+    expect(paymentBelongsToPeriod(p, july, "America/Los_Angeles")).toBe(true);
+  });
+
+  it("a June billing month collected in July is June revenue, not July", () => {
+    const p = { status: "succeeded", billingMonth: "2026-06-01", paidAt: new Date("2026-07-02T18:00:00Z") };
+    expect(paymentBelongsToPeriod(p, july, "America/Los_Angeles")).toBe(false);
+    expect(paymentBelongsToPeriod(p, { start: "2026-06-01", end: "2026-06-30" }, "America/Los_Angeles")).toBe(true);
+  });
+
+  it("without a billing month, the workspace-LOCAL date of collection decides — never the UTC date", () => {
+    // 2026-07-01T06:59Z is still June 30 in Los Angeles
+    const p = { status: "succeeded", billingMonth: null, paidAt: new Date("2026-07-01T06:59:00Z") };
+    expect(paymentRevenueDate(p, "America/Los_Angeles")).toBe("2026-06-30");
+    expect(paymentRevenueDate(p, "UTC")).toBe("2026-07-01");
+    expect(paymentBelongsToPeriod(p, july, "America/Los_Angeles")).toBe(false);
+    expect(paymentBelongsToPeriod(p, july, "UTC")).toBe(true);
+  });
+
+  it("non-succeeded statuses never belong to any period", () => {
+    for (const status of ["pending", "failed", "refunded", "voided"]) {
+      expect(paymentBelongsToPeriod({ status, billingMonth: "2026-07-01", paidAt: new Date("2026-07-10T12:00:00Z") }, july, "UTC")).toBe(false);
+    }
+  });
+
+  it("normalizes Date-typed billing_month values (PGlite driver) like string ones (node-postgres)", () => {
+    const asDate = { status: "succeeded", billingMonth: new Date("2026-07-01T00:00:00Z"), paidAt: new Date("2026-08-02T12:00:00Z") };
+    expect(paymentRevenueDate(asDate, "UTC")).toBe("2026-07-01");
+  });
+
+  it("exactly one period per payment: revenue date is a single calendar date", () => {
+    const p = { status: "succeeded", billingMonth: "2026-06-01", paidAt: new Date("2026-07-02T18:00:00Z") };
+    const months = [
+      { start: "2026-05-01", end: "2026-05-31" },
+      { start: "2026-06-01", end: "2026-06-30" },
+      july,
+      { start: "2026-08-01", end: "2026-08-31" },
+    ];
+    const memberships = months.filter((m) => paymentBelongsToPeriod(p, m, "America/Los_Angeles"));
+    expect(memberships).toHaveLength(1);
   });
 });
 
@@ -272,5 +320,18 @@ describe("nextPaymentFor — the Next Payment display bug", () => {
     expect(nextPaymentFor({ ...base, status: "paused" }, neverCollected)).toBeNull();
     expect(nextPaymentFor({ ...base, status: "canceled" }, neverCollected)).toBeNull();
     expect(nextPaymentFor({ ...base, frequency: "yearly" }, neverCollected)).toBeNull();
+  });
+
+  it("day-31 clamp also advances correctly: after collecting February, next shows March 31", () => {
+    const sub = { ...base, paymentDay: 31, startDate: "2026-01-01" };
+    const collectedFeb = (month: string) => month === "2026-02-01";
+    const info = nextPaymentFor(sub, collectedFeb, new Date("2026-03-05T00:00:00Z"));
+    expect(info).toEqual({ dueDate: "2026-03-31", late: false, collected: true });
+  });
+
+  it("no payment day set = documented day-1 convention (the cycle bills on the 1st), not a missing date", () => {
+    const sub = { ...base, paymentDay: null };
+    const info = nextPaymentFor(sub, neverCollected, new Date("2026-07-20T00:00:00Z"));
+    expect(info?.dueDate).toBe("2026-07-01");
   });
 });

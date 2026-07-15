@@ -8,16 +8,21 @@ import { FinancialAmount } from "@/components/shared/financial-amount";
 import { MrrTrendChart, CollectedChart } from "@/features/reports/charts";
 import { formatMoney } from "@/lib/finance/metrics";
 import { EmptyState } from "@/components/shared/empty-state";
+import { todayInTimezone } from "@/lib/date-tz";
 import { BarChart3 } from "lucide-react";
+
+// Date-sensitive: month boundaries and "this month" totals must be computed
+// at request time, never frozen by any static/ISR optimization.
+export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
   const ctx = await requireWorkspace();
   const wsId = ctx.workspace.id;
-  const monthStart = `${new Date().toISOString().slice(0, 7)}-01`;
+  const monthStart = `${todayInTimezone(ctx.workspace.timezone).slice(0, 7)}-01`;
   const [metrics, mrrTrend, collected, revenueByClient, mrrByService, monthExpenses] = await Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
-    getCollectedByMonth(wsId),
+    getCollectedByMonth(wsId, ctx.workspace.timezone),
     getRevenueByClient(wsId),
     getMrrByService(wsId),
     getExpensesForMonth(wsId, monthStart),

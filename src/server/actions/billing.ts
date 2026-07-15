@@ -6,7 +6,7 @@ import { db, type Tx } from "@/lib/db";
 import { services, subscriptions, invoices, invoiceItems, payments, clients, expenses } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
-import { serviceSchema, subscriptionSchema, invoiceSchema, paymentSchema, expenseSchema } from "@/lib/validation";
+import { serviceSchema, subscriptionSchema, subscriptionEditSchema, invoiceSchema, paymentSchema, expenseSchema } from "@/lib/validation";
 import { roundCents, toAmount, recalcInvoiceForPaymentChange, paymentAttribution, currentDueMonth } from "@/lib/finance/metrics";
 import { revalidateGoalPaths as revalidateGoals } from "./revalidate-goals";
 
@@ -513,22 +513,25 @@ export async function restorePayment(paymentId: string): Promise<ActionResult> {
   }
 }
 
-/** Permanently deletes a payment record (unlike void, no audit trail is
- * kept) and recalculates any linked invoice. Owners/admins only. */
+/**
+ * Permanently deletes a payment record. Restricted on purpose: the product's
+ * audit-safe design (see voidPayment) keeps every financial record, so hard
+ * deletion is only allowed for a payment that has ALREADY been voided —
+ * void first (reversible, audited), then delete if the record truly must
+ * go (e.g. an entry-mistake duplicate). An active payment can never be
+ * hard-deleted in one step. Owners/admins only; the deletion itself is
+ * activity-logged. Because the payment being deleted is voided, it has no
+ * revenue contribution, so no invoice recalculation is needed.
+ */
 export async function deletePayment(paymentId: string): Promise<ActionResult> {
   try {
     const ctx = await authorize("admin");
     const payment = await ownedPayment(ctx.workspace.id, paymentId);
+    if (payment.status !== "voided") {
+      throw new Error("Only removed payments can be permanently deleted — remove (void) it first.");
+    }
 
-    await db.transaction(async (tx) => {
-      await recalcLinkedInvoice(
-        tx,
-        payment.invoiceId,
-        { status: payment.status, amount: payment.amount },
-        null
-      );
-      await tx.delete(payments).where(eq(payments.id, payment.id));
-    });
+    await db.delete(payments).where(eq(payments.id, payment.id));
 
     await logActivity({
       workspaceId: ctx.workspace.id, actorId: ctx.user.id,
@@ -543,13 +546,20 @@ export async function deletePayment(paymentId: string): Promise<ActionResult> {
   }
 }
 
-/** Edits an existing subscription's billing terms (amount, day, status, etc). */
+/**
+ * Edits an existing subscription's billing terms (amount, frequency,
+ * payment day, status, dates). Identity is immutable: the schema carries no
+ * clientId/serviceId, so an edit can never re-attribute the subscription.
+ * Historical payment rows are never touched — changing the amount today
+ * only affects future collections, past collected payments keep the amount
+ * that was actually charged.
+ */
 export async function updateSubscription(subscriptionId: string, input: unknown): Promise<ActionResult> {
   try {
     const ctx = await authorize("manager");
-    const data = subscriptionSchema.parse(input);
+    const data = subscriptionEditSchema.parse(input);
     const [existing] = await db
-      .select({ id: subscriptions.id })
+      .select()
       .from(subscriptions)
       .where(and(eq(subscriptions.id, subscriptionId), eq(subscriptions.workspaceId, ctx.workspace.id)))
       .limit(1);
@@ -563,9 +573,19 @@ export async function updateSubscription(subscriptionId: string, input: unknown)
         startDate: data.startDate,
         nextBillingDate: data.nextBillingDate ?? null,
         paymentDay: data.paymentDay ?? null,
+        // Status edits keep the same timestamp semantics as
+        // setSubscriptionStatus: stamp on the transition in, clear/keep on
+        // the way out, so MRR history stays reconstructable.
+        pausedAt: data.status === "paused" ? existing.pausedAt ?? new Date() : null,
+        canceledAt: data.status === "canceled" ? existing.canceledAt ?? new Date() : existing.canceledAt,
       })
       .where(eq(subscriptions.id, subscriptionId));
-    revalidateBilling(data.clientId);
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "subscription.updated", entityType: "subscription", entityId: subscriptionId, clientId: existing.clientId,
+      metadata: { amount: data.amount, frequency: data.frequency, status: data.status },
+    });
+    revalidateBilling(existing.clientId);
     return { ok: true };
   } catch (err) {
     return actionError(err);

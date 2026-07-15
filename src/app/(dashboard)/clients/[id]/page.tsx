@@ -11,12 +11,17 @@ import { todayInTimezone } from "@/lib/date-tz";
 import { canAdminister } from "@/lib/permissions";
 import { ClientDetailView } from "@/features/clients/client-detail-view";
 
+// Date-sensitive: days remaining, pace, and due states must be computed at
+// request time in the workspace timezone — time moves even when no mutation
+// fires a revalidation, so this page must never be statically frozen.
+export const dynamic = "force-dynamic";
+
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireWorkspace();
   const [detail, billing, members, services, portalAccess, leadSummary] = await Promise.all([
     getClientDetail(ctx.workspace.id, id).catch(() => null),
-    getClientBillingSummary(ctx.workspace.id, id),
+    getClientBillingSummary(ctx.workspace.id, id, ctx.workspace.timezone),
     listMembers(ctx.workspace.id),
     listServices(ctx.workspace.id),
     getClientPortalAccess(ctx.workspace.id, id),

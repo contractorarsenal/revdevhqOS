@@ -1,24 +1,27 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { payments, clients, leads, projects, tasks } from "@/lib/db/schema";
 import { roundCents } from "@/lib/finance/metrics";
-import { todayInTimezone, zonedTimeToUtc } from "@/lib/date-tz";
+import { todayInTimezone } from "@/lib/date-tz";
 import {
-  computeGoal, isManualMetric, addDaysStr,
-  type GoalComputation, type GoalMetricType,
+  computeGoal, isManualMetric,
+  type GoalComputation, type GoalMetricType, type Period,
 } from "@/lib/goals";
-import { metricValueInPeriod, type UtcBounds, type MetricDb } from "./goal-metrics";
+import { metricValueInPeriod, type MetricDb } from "./goal-metrics";
+import { periodUtcBounds, revenuePaymentInPeriod } from "./payment-period";
 
 /**
  * Reusable, period-scoped business calculations. Every function here is
  * deliberately narrow: it computes exactly what the underlying records can
- * honestly support for an arbitrary UTC window (no invented historical
+ * honestly support for an arbitrary calendar period (no invented historical
  * snapshots — e.g. there is no "active clients as of a past date" here,
  * because client status has no change history to reconstruct it from).
  *
  * Built for the Goals live-recalculation work but written to be the shared
- * foundation for Monthly Reports later: pass any workspace-local period's
- * UTC bounds (via zonedTimeToUtc / dayBoundsInTimezone) and get the same
- * numbers a report or a goal would show for that window.
+ * foundation for Monthly Reports later: pass any workspace-local calendar
+ * period plus the workspace timezone and get exactly the numbers a report
+ * or a goal would show for that window — revenue uses the authoritative
+ * billing-month-first attribution (revenuePaymentInPeriod), count metrics
+ * use the period's UTC window.
  *
  * Deliberately NOT "server-only" and parameterized over the db handle (like
  * goal-metrics.metricValueInPeriod), so PGlite integration tests exercise
@@ -32,21 +35,19 @@ export type RevenueStats = {
   largestPayment: number;
 };
 
-/** Succeeded payments only — the same rule as isRevenuePayment / metricValueInPeriod. */
+/** Succeeded payments attributed to the period by the authoritative rule
+ * (billing_month first, else workspace-local paid_at) — identical to the
+ * revenue_collected goal metric by construction. */
 export async function calculateRevenueForPeriod(
   dbOrTx: MetricDb,
   workspaceId: string,
-  bounds: UtcBounds
+  period: Period,
+  timezone: string
 ): Promise<RevenueStats> {
   const rows = await dbOrTx
     .select({ amount: payments.amount })
     .from(payments)
-    .where(and(
-      eq(payments.workspaceId, workspaceId),
-      eq(payments.status, "succeeded"),
-      gte(payments.paidAt, bounds.start),
-      lt(payments.paidAt, bounds.end)
-    ));
+    .where(revenuePaymentInPeriod(workspaceId, period, timezone));
   const amounts = rows.map((r) => Number(r.amount));
   const collected = roundCents(amounts.reduce((sum, a) => sum + a, 0));
   const paymentCount = amounts.length;
@@ -64,8 +65,10 @@ export type ClientStats = { newClients: number };
 export async function calculateClientStatsForPeriod(
   dbOrTx: MetricDb,
   workspaceId: string,
-  bounds: UtcBounds
+  period: Period,
+  timezone: string
 ): Promise<ClientStats> {
+  const bounds = periodUtcBounds(period, timezone);
   const [row] = await dbOrTx
     .select({ n: sql<string>`count(*)` })
     .from(clients)
@@ -81,8 +84,10 @@ export type LeadStats = { newLeads: number };
 export async function calculateLeadStatsForPeriod(
   dbOrTx: MetricDb,
   workspaceId: string,
-  bounds: UtcBounds
+  period: Period,
+  timezone: string
 ): Promise<LeadStats> {
+  const bounds = periodUtcBounds(period, timezone);
   const [row] = await dbOrTx
     .select({ n: sql<string>`count(*)` })
     .from(leads)
@@ -96,8 +101,10 @@ export type TaskStats = { completedTasks: number };
 export async function calculateTaskStatsForPeriod(
   dbOrTx: MetricDb,
   workspaceId: string,
-  bounds: UtcBounds
+  period: Period,
+  timezone: string
 ): Promise<TaskStats> {
+  const bounds = periodUtcBounds(period, timezone);
   const [row] = await dbOrTx
     .select({ n: sql<string>`count(*)` })
     .from(tasks)
@@ -111,8 +118,10 @@ export type ProjectStats = { completedProjects: number };
 export async function calculateProjectStatsForPeriod(
   dbOrTx: MetricDb,
   workspaceId: string,
-  bounds: UtcBounds
+  period: Period,
+  timezone: string
 ): Promise<ProjectStats> {
+  const bounds = periodUtcBounds(period, timezone);
   const [row] = await dbOrTx
     .select({ n: sql<string>`count(*)` })
     .from(projects)
@@ -145,10 +154,7 @@ export async function calculateGoalSnapshot(
   const manual = isManualMetric(metricType);
   const currentValue = manual
     ? Number(goal.manualCurrentValue ?? 0)
-    : await metricValueInPeriod(dbOrTx, workspaceId, metricType, {
-        start: zonedTimeToUtc(goal.periodStart, "00:00", timezone),
-        end: zonedTimeToUtc(addDaysStr(goal.periodEnd, 1), "00:00", timezone),
-      });
+    : await metricValueInPeriod(dbOrTx, workspaceId, metricType, { start: goal.periodStart, end: goal.periodEnd }, timezone);
   const today = todayInTimezone(timezone);
   return computeGoal({
     current: currentValue,

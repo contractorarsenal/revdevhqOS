@@ -5,6 +5,11 @@ import { listClients } from "@/server/queries/clients";
 import { getDashboardMetrics } from "@/server/queries/metrics";
 import { BillingView } from "@/features/billing/billing-view";
 
+// Date-sensitive: days remaining, pace, and due states must be computed at
+// request time in the workspace timezone — time moves even when no mutation
+// fires a revalidation, so this page must never be statically frozen.
+export const dynamic = "force-dynamic";
+
 export default async function BillingPage({
   searchParams,
 }: {
