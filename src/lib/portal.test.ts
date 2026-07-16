@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeEmail, validateInviteForAcceptance, resolvePostLoginDestination,
   industryAccent, resolveClientAccent, PORTAL_INDUSTRIES,
+  hasPortalRole, assertPortalRole,
 } from "./portal";
 import { SIDEBAR_PRIMARY_NAV } from "@/components/layout/nav-items";
 
@@ -66,6 +67,31 @@ describe("post-login destination resolver", () => {
 
   it("users with no memberships fall back to setup", () => {
     expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: null })).toBe("/setup");
+  });
+});
+
+describe("portal role hierarchy (lead management permissions)", () => {
+  it("client_owner and client_member can both manage leads", () => {
+    expect(hasPortalRole("client_owner", "client_member")).toBe(true);
+    expect(hasPortalRole("client_member", "client_member")).toBe(true);
+    expect(() => assertPortalRole("client_owner", "client_member")).not.toThrow();
+    expect(() => assertPortalRole("client_member", "client_member")).not.toThrow();
+  });
+
+  it("client_read_only cannot manage leads — every mutation gate rejects it", () => {
+    expect(hasPortalRole("client_read_only", "client_member")).toBe(false);
+    expect(() => assertPortalRole("client_read_only", "client_member")).toThrow();
+  });
+
+  it("client_read_only can still view (meets the read-only floor)", () => {
+    expect(hasPortalRole("client_read_only", "client_read_only")).toBe(true);
+    expect(() => assertPortalRole("client_read_only", "client_read_only")).not.toThrow();
+  });
+
+  it("only the owner clears the owner bar", () => {
+    expect(hasPortalRole("client_owner", "client_owner")).toBe(true);
+    expect(hasPortalRole("client_member", "client_owner")).toBe(false);
+    expect(hasPortalRole("client_read_only", "client_owner")).toBe(false);
   });
 });
 

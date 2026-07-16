@@ -6,9 +6,10 @@ import { db } from "@/lib/db";
 import { leads, opportunities, pipelineStages } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
-import { leadSchema } from "@/lib/validation";
+import { leadSchema, clientLeadManualEntrySchema } from "@/lib/validation";
 import { assertWorkspaceMember, assertWorkspaceClient } from "@/server/workspace-guards";
 import { revalidateGoalPaths } from "./revalidate-goals";
+import { createClientLead } from "@/server/services/lead-ingestion";
 
 async function ownedLead(workspaceId: string, leadId: string) {
   const [row] = await db
@@ -104,7 +105,7 @@ export async function markLeadLost(leadId: string): Promise<ActionResult> {
     await ownedLead(ctx.workspace.id, leadId);
     await db
       .update(leads)
-      .set({ status: "lost" })
+      .set({ status: "lost", lostAt: new Date() })
       .where(and(eq(leads.id, leadId), eq(leads.workspaceId, ctx.workspace.id)));
     await logActivity({
       workspaceId: ctx.workspace.id, actorId: ctx.user.id,
@@ -112,6 +113,44 @@ export async function markLeadLost(leadId: string): Promise<ActionResult> {
     });
     revalidatePath("/leads");
     return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/**
+ * Internal owner/admin manually creating a lead FOR a client — appears in
+ * that client's portal immediately. Routes through createClientLead(), the
+ * one canonical lead-creation path also intended for future website-form
+ * and webhook/n8n ingestion.
+ */
+export async function createManualClientLead(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const ctx = await authorize("admin");
+    const data = clientLeadManualEntrySchema.parse(input);
+    await assertWorkspaceClient(ctx.workspace.id, data.clientId);
+
+    const { id } = await createClientLead({
+      workspaceId: ctx.workspace.id,
+      clientId: data.clientId,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      requestedService: data.requestedService,
+      source: data.source,
+      receivedAt: new Date(data.receivedAt),
+      status: data.status,
+      estimatedValue: data.estimatedValue,
+      createdVia: "manual",
+      actorId: ctx.user.id,
+    });
+
+    revalidatePath("/leads");
+    revalidatePath(`/clients/${data.clientId}`);
+    revalidatePath("/portal");
+    revalidatePath("/portal/leads");
+    revalidateGoalPaths(); // new_leads goal metric counts creation time
+    return { ok: true, data: { id } };
   } catch (err) {
     return actionError(err);
   }

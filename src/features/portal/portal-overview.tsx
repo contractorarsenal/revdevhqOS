@@ -1,29 +1,45 @@
-import { CheckCircle2, Users, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CheckCircle2, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
 import { PORTAL_ROLE_LABEL, type ClientPortalRole, type ClientPortalStatus } from "@/lib/portal";
-import type { ClientLeadSummary } from "@/server/queries/client-leads";
+import { formatMoney } from "@/lib/finance/metrics";
+import type { ClientLeadMetrics } from "@/server/queries/client-leads";
 
 /**
- * The minimal client-facing overview for this phase. Presentational — the
- * caller (portal page or internal preview) supplies all data, so preview
- * mode can never trigger client-only actions. No fake numbers: the lead
- * summary is real or an explicit empty state, and future modules are
- * labeled coming soon.
+ * The client-facing portal home. Presentational — the caller (portal page
+ * or internal preview) supplies all data, so preview mode can never
+ * trigger client-only actions. No fake numbers: every metric is real or an
+ * explicit empty state, and modules not yet built are labeled coming soon.
  */
 export function PortalOverview({
-  businessName, accent, role, status, memberName, leadSummary,
+  businessName, accent, role, status, memberName, leadMetrics,
 }: {
   businessName: string;
   accent: string;
   role: ClientPortalRole;
   status: ClientPortalStatus;
   memberName: string;
-  leadSummary: ClientLeadSummary;
+  leadMetrics: ClientLeadMetrics;
 }) {
   const futureModules = [
-    { icon: Users, label: "Leads", note: "Coming soon" },
     { icon: LifeBuoy, label: "Support Requests", note: "Coming soon" },
     { icon: TrendingUp, label: "Google Rankings", note: "Coming soon" },
     { icon: FileBarChart, label: "Progress Reports", note: "Coming soon" },
+  ];
+
+  const topStats: [string, number | string][] = [
+    ["Leads This Week", leadMetrics.leadsThisWeek],
+    ["Leads This Month", leadMetrics.leadsThisMonth],
+    ["Total Leads", leadMetrics.totalLeads],
+    ["Avg / Month", leadMetrics.avgLeadsPerMonth],
+  ];
+
+  const operationalStats: [string, number, string?][] = [
+    ["New", leadMetrics.newCount],
+    ["Needs Response", leadMetrics.needsResponse, leadMetrics.needsResponse > 0 ? "text-red-700 dark:text-red-400" : undefined],
+    ["Contacted", leadMetrics.contacted],
+    ["Estimate Scheduled", leadMetrics.estimateScheduled],
+    ["Won", leadMetrics.won, "text-emerald-700 dark:text-emerald-400"],
+    ["Lost", leadMetrics.lost],
   ];
 
   return (
@@ -65,31 +81,52 @@ export function PortalOverview({
       </section>
 
       <section className="rounded-lg border border-border bg-card shadow-sm">
-        <header className="border-b border-border/60 px-4 py-2.5">
-          <h2 className="text-[12.5px] font-semibold">Lead activity</h2>
+        <header className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
+          <h2 className="text-[12.5px] font-semibold">Leads</h2>
+          <Link href="/portal/leads" className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold hover:underline" style={{ color: accent }}>
+            View all <ArrowRight className="size-3" />
+          </Link>
         </header>
-        {leadSummary.total === 0 ? (
+        {leadMetrics.totalLeads === 0 ? (
           <p className="px-4 py-5 text-[12.5px] text-muted-foreground">
             No leads recorded yet. New leads will appear here as they come in.
           </p>
         ) : (
-          <dl className="grid grid-cols-2 gap-px bg-border/60 sm:grid-cols-4">
-            {(
-              [
-                ["This week", leadSummary.thisWeek],
-                ["This month", leadSummary.thisMonth],
-                ["Total leads", leadSummary.total],
-                ["Won", leadSummary.won],
-              ] as const
-            ).map(([label, value]) => (
-              <div key={label} className="bg-card px-4 py-3">
-                <dt className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
-                <dd className="mt-0.5 text-lg font-semibold tabular-nums" style={label === "This week" ? { color: accent } : undefined}>
-                  {value}
-                </dd>
+          <>
+            <dl className="grid grid-cols-2 gap-px bg-border/60 sm:grid-cols-4">
+              {topStats.map(([label, value]) => (
+                <div key={label} className="bg-card px-4 py-3">
+                  <dt className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+                  <dd className="mt-0.5 text-lg font-semibold tabular-nums" style={label === "Leads This Week" ? { color: accent } : undefined}>
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <dl className="grid grid-cols-3 gap-px border-t border-border/60 bg-border/60 sm:grid-cols-6">
+              {operationalStats.map(([label, value, color]) => (
+                <div key={label} className="bg-card px-3 py-2.5">
+                  <dt className="truncate text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</dt>
+                  <dd className={`mt-0.5 text-[15px] font-semibold tabular-nums ${color ?? ""}`}>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {(leadMetrics.estimatedPipelineValue > 0 || leadMetrics.confirmedRevenue > 0) && (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border/60 px-4 py-2.5 text-[11.5px]">
+                {leadMetrics.estimatedPipelineValue > 0 && (
+                  <span className="text-muted-foreground">
+                    Estimated Pipeline Value <span className="font-semibold tabular-nums text-foreground">{formatMoney(leadMetrics.estimatedPipelineValue)}</span>
+                  </span>
+                )}
+                {leadMetrics.confirmedRevenue > 0 && (
+                  <span className="text-muted-foreground">
+                    Confirmed Revenue{" "}
+                    <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{formatMoney(leadMetrics.confirmedRevenue)}</span>
+                  </span>
+                )}
               </div>
-            ))}
-          </dl>
+            )}
+          </>
         )}
       </section>
 

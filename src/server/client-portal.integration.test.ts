@@ -58,6 +58,14 @@ beforeAll(async () => {
       workspace_id uuid NOT NULL,
       status text NOT NULL DEFAULT 'new',
       estimated_value numeric(12,2),
+      -- Columns the 0016 migration adds; the summary/metrics query now reads
+      -- received_at (not created_at), last_contacted_at (needs-response), and
+      -- closed_value (confirmed revenue). 0016 itself ALTERs the lead_status
+      -- enum, which this stub models as plain text, so its columns are stubbed
+      -- here rather than run via the enum-dependent migration.
+      closed_value numeric(12,2),
+      last_contacted_at timestamptz,
+      received_at timestamptz NOT NULL DEFAULT now(),
       archived_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now()
     );
@@ -179,16 +187,16 @@ describe("membership constraints", () => {
 describe("client lead summary runs the production query builders", () => {
   const TODAY = "2026-07-14"; // Tuesday → week is Jul 13–19; month is July
 
-  it("counts are client-scoped, archived leads excluded, statuses mapped", async () => {
+  it("counts are client-scoped, archived leads excluded, revenue split by status", async () => {
     await client.exec(`
-      INSERT INTO leads (workspace_id, client_id, status, estimated_value, created_at, archived_at) VALUES
-        ('${WS1}', '${CLIENT_A}', 'new',       500,  '2026-07-14T18:00:00Z', NULL),
-        ('${WS1}', '${CLIENT_A}', 'contacted', NULL, '2026-07-02T18:00:00Z', NULL),
-        ('${WS1}', '${CLIENT_A}', 'converted', 1500, '2026-06-10T18:00:00Z', NULL),
-        ('${WS1}', '${CLIENT_A}', 'lost',      NULL, '2026-06-05T18:00:00Z', NULL),
-        ('${WS1}', '${CLIENT_A}', 'new',       999,  '2026-07-14T19:00:00Z', '2026-07-14T20:00:00Z'),
-        ('${WS1}', '${CLIENT_B}', 'new',       NULL, '2026-07-14T18:00:00Z', NULL),
-        ('${WS1}', NULL,          'new',       NULL, '2026-07-14T18:00:00Z', NULL);
+      INSERT INTO leads (workspace_id, client_id, status, estimated_value, closed_value, received_at, archived_at) VALUES
+        ('${WS1}', '${CLIENT_A}', 'new',       500,  NULL, '2026-07-14T18:00:00Z', NULL),
+        ('${WS1}', '${CLIENT_A}', 'contacted', 300,  NULL, '2026-07-02T18:00:00Z', NULL),
+        ('${WS1}', '${CLIENT_A}', 'won',       1500, 1800, '2026-06-10T18:00:00Z', NULL),
+        ('${WS1}', '${CLIENT_A}', 'lost',      NULL, NULL, '2026-06-05T18:00:00Z', NULL),
+        ('${WS1}', '${CLIENT_A}', 'new',       999,  NULL, '2026-07-14T19:00:00Z', '2026-07-14T20:00:00Z'),
+        ('${WS1}', '${CLIENT_B}', 'new',       NULL, NULL, '2026-07-14T18:00:00Z', NULL),
+        ('${WS1}', NULL,          'new',       NULL, NULL, '2026-07-14T18:00:00Z', NULL);
     `);
     const a = await clientLeadSummary(db, WS1, CLIENT_A, TZ, TODAY);
     expect(a.total).toBe(4); // archived excluded, other client/unlinked excluded
@@ -198,7 +206,9 @@ describe("client lead summary runs the production query builders", () => {
     expect(a.contacted).toBe(1);
     expect(a.won).toBe(1);
     expect(a.lost).toBe(1);
-    expect(a.pipelineValue).toBe(2000); // 500 + 1500; archived 999 excluded
+    // Estimated pipeline sums OPEN leads only (new + contacted); the won
+    // lead's 1500 estimate and the archived lead's 999 are both excluded.
+    expect(a.pipelineValue).toBe(800); // 500 + 300
     expect(a.avgPerMonth).toBe(2); // 4 leads across Jun–Jul
   });
 
@@ -206,7 +216,7 @@ describe("client lead summary runs the production query builders", () => {
     const b = await clientLeadSummary(db, WS1, CLIENT_B, TZ, TODAY);
     expect(b.total).toBe(1);
     expect(b.won).toBe(0);
-    expect(b.pipelineValue).toBeNull();
+    expect(b.pipelineValue).toBe(0); // one open lead, no estimated value
   });
 
   it("cross-workspace summaries are empty even for a real client id", async () => {

@@ -5,7 +5,7 @@ import { requireWorkspace } from "@/lib/auth/session";
 import { canAdminister } from "@/lib/permissions";
 import { db } from "@/lib/db";
 import { clients } from "@/lib/db/schema";
-import { clientLeadSummary } from "@/server/queries/client-leads";
+import { getClientLeadMetrics } from "@/server/queries/client-leads";
 import { getClientPortalAccess } from "@/server/queries/client-portal";
 import { todayInTimezone } from "@/lib/date-tz";
 import { resolveClientAccent } from "@/lib/portal";
@@ -13,6 +13,8 @@ import { PortalShell } from "@/features/portal/portal-shell";
 import { PortalOverview } from "@/features/portal/portal-overview";
 
 export const metadata = { title: "Client portal preview" };
+// Date-sensitive (lead metrics) — never statically frozen.
+export const dynamic = "force-dynamic";
 
 /**
  * Internal-only, read-only preview of what a client would see. Server-
@@ -33,8 +35,8 @@ export default async function PortalPreviewPage({ params }: { params: Promise<{ 
   if (!client) notFound();
 
   const accent = resolveClientAccent(client);
-  const [leadSummary, access] = await Promise.all([
-    clientLeadSummary(db, ctx.workspace.id, client.id, ctx.workspace.timezone, todayInTimezone(ctx.workspace.timezone)),
+  const [leadMetrics, access] = await Promise.all([
+    getClientLeadMetrics(db, ctx.workspace.id, client.id, ctx.workspace.timezone, todayInTimezone(ctx.workspace.timezone)),
     getClientPortalAccess(ctx.workspace.id, client.id),
   ]);
 
@@ -60,7 +62,7 @@ export default async function PortalPreviewPage({ params }: { params: Promise<{ 
           role={access.membership?.role ?? "client_owner"}
           status={access.membership?.status ?? "active"}
           memberName={previewName}
-          leadSummary={leadSummary}
+          leadMetrics={leadMetrics}
         />
       </PortalShell>
     </div>

@@ -3,29 +3,32 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Menu, LogOut, Users, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
+import { Home, Users, Menu, LogOut, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 /** The client portal's own mobile nav — deliberately separate from the
  * internal MobileBottomNav/MoreMenuSheet and never imports from
- * components/layout. Only "Overview" is a real destination today; Leads,
- * Support, and Rankings/Reports are surfaced as Coming Soon inside More
- * rather than as dead links (see PortalOverview's own futureModules list,
- * which this mirrors). */
+ * components/layout. "Overview" and "Leads" are real destinations; Support
+ * and Rankings/Reports are surfaced as Coming Soon inside More rather than
+ * as dead links (see PortalOverview's own futureModules list, which this
+ * mirrors). */
 const COMING_SOON = [
-  { label: "Leads", icon: Users },
   { label: "Support", icon: LifeBuoy },
   { label: "Google Rankings", icon: TrendingUp },
   { label: "Progress Reports", icon: FileBarChart },
+];
+
+const PRIMARY_TABS = [
+  { href: "/portal", label: "Overview", icon: Home },
+  { href: "/portal/leads", label: "Leads", icon: Users },
 ];
 
 export function PortalMobileNav({ accent }: { accent: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const overviewActive = pathname === "/portal";
 
   return (
     <>
@@ -33,17 +36,21 @@ export function PortalMobileNav({ accent }: { accent: string }) {
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-40 flex min-h-16 items-stretch border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm md:hidden"
       >
-        <Link
-          href="/portal"
-          aria-current={overviewActive ? "page" : undefined}
-          className={cn(
-            "flex min-w-11 flex-1 flex-col items-center justify-center gap-1 text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
-          )}
-          style={overviewActive ? { color: accent } : undefined}
-        >
-          <Home className="size-5" aria-hidden />
-          <span className={cn("text-[10.5px] font-medium leading-none", overviewActive && "font-semibold")}>Overview</span>
-        </Link>
+        {PRIMARY_TABS.map((tab) => {
+          const active = tab.href === "/portal" ? pathname === "/portal" : pathname.startsWith(tab.href);
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              aria-current={active ? "page" : undefined}
+              className="flex min-w-11 flex-1 flex-col items-center justify-center gap-1 text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
+              style={active ? { color: accent } : undefined}
+            >
+              <tab.icon className="size-5" aria-hidden />
+              <span className={cn("text-[10.5px] font-medium leading-none", active && "font-semibold")}>{tab.label}</span>
+            </Link>
+          );
+        })}
         <button
           type="button"
           aria-label="More"

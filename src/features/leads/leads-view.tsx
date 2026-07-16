@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { format, isPast } from "date-fns";
 import { Target, Plus, ArrowRight, XCircle, Pencil, PhoneCall } from "lucide-react";
 import { type LeadRow } from "@/server/queries/leads";
+import { toInternalEditableStatus } from "@/lib/leads-client";
 import { convertLeadToOpportunity, markLeadLost, touchLeadContact } from "@/server/actions/leads";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
@@ -20,14 +21,27 @@ import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { Button } from "@/components/ui/button";
 import { formatMoney, toAmount } from "@/lib/finance/metrics";
 import { LeadFormDialog } from "./lead-form-dialog";
+import { ClientLeadManualFormDialog } from "./client-lead-manual-form-dialog";
 
 export function LeadsView({
-  leads, members, clients, openNew,
-}: { leads: LeadRow[]; members: { userId: string; name: string }[]; clients: { id: string; name: string }[]; openNew: boolean }) {
+  leads: allLeads, members, clients, openNew, clientFilter,
+}: {
+  leads: LeadRow[];
+  members: { userId: string; name: string }[];
+  clients: { id: string; name: string }[];
+  openNew: boolean;
+  /** From ?client=<id> — set by "View All Client Leads" on the internal
+   * client detail page. Filters the list to just that client's leads. */
+  clientFilter?: string;
+}) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(openNew);
+  const [clientLeadFormOpen, setClientLeadFormOpen] = useState(false);
   const [editing, setEditing] = useState<LeadRow | null>(null);
   const [drawer, setDrawer] = useState<LeadRow | null>(null);
+
+  const filteredClient = clientFilter ? clients.find((c) => c.id === clientFilter) : undefined;
+  const leads = useMemo(() => (clientFilter ? allLeads.filter((l) => l.clientId === clientFilter) : allLeads), [allLeads, clientFilter]);
 
   const openLeads = useMemo(() => leads.filter((l) => !["converted", "lost", "unqualified"].includes(l.status)), [leads]);
   const potentialMrr = openLeads.reduce((sum, l) => sum + toAmount(l.estimatedMrr), 0);
@@ -95,7 +109,18 @@ export function LeadsView({
 
   return (
     <div>
-      <PageHeader title="Leads" description="Track potential clients, communication, and upcoming follow-ups.">
+      <PageHeader
+        title="Leads"
+        description={filteredClient ? `Filtered to ${filteredClient.name} — leads generated for this client.` : "Track potential clients, communication, and upcoming follow-ups."}
+      >
+        {filteredClient && (
+          <Button size="sm" variant="ghost" onClick={() => router.push("/leads")}>
+            Clear filter
+          </Button>
+        )}
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setClientLeadFormOpen(true)}>
+          <Plus className="size-3.5" /> Add Client Lead
+        </Button>
         <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="size-3.5" /> Add Lead
         </Button>
@@ -120,6 +145,8 @@ export function LeadsView({
         <DataTable columns={columns} data={leads} searchPlaceholder="Search leads…" onRowClick={(row) => setDrawer(row)} />
       )}
 
+      <ClientLeadManualFormDialog open={clientLeadFormOpen} onOpenChange={setClientLeadFormOpen} clients={clients} fixedClientId={clientFilter} />
+
       <LeadFormDialog
         open={formOpen}
         onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
@@ -130,7 +157,7 @@ export function LeadsView({
             ? {
                 id: editing.id, company: editing.company, contactName: editing.contactName ?? "",
                 email: editing.email ?? "", phone: editing.phone ?? "", source: editing.source ?? "",
-                status: editing.status === "converted" ? "qualified" : editing.status,
+                status: toInternalEditableStatus(editing.status),
                 serviceInterest: editing.serviceInterest ?? "",
                 estimatedValue: editing.estimatedValue ?? "", estimatedMrr: editing.estimatedMrr ?? "",
                 ownerId: editing.ownerId ?? "", notes: editing.notes ?? "",

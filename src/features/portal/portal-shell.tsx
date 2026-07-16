@@ -1,6 +1,12 @@
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { PortalMobileNav } from "@/features/portal/portal-mobile-nav";
+
+const DESKTOP_NAV = [
+  { href: "/portal", label: "Overview" },
+  { href: "/portal/leads", label: "Leads" },
+];
 
 /**
  * The client portal's own chrome — deliberately separate from the internal
@@ -39,6 +45,17 @@ export function PortalShell({
               Contractor Arsenal Command Center
             </p>
           </div>
+          {showNav && (
+            /* Distinct accessible name from the mobile bottom bar ("Primary")
+               so the two navigation landmarks never collide for AT users. */
+            <nav aria-label="Portal" className="hidden items-center gap-4 md:flex">
+              {DESKTOP_NAV.map((item) => (
+                <Link key={item.href} href={item.href} className="text-[12.5px] font-medium text-muted-foreground hover:text-foreground">
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          )}
           {userName && <span className="hidden max-w-[160px] truncate text-[12px] text-muted-foreground sm:block">{userName}</span>}
           {showSignOut && <SignOutButton />}
         </div>

@@ -12,16 +12,30 @@ import { PortalMobileNav } from "./portal-mobile-nav";
 import { SIDEBAR_PRIMARY_NAV, SIDEBAR_SECONDARY_NAV } from "@/components/layout/nav-items";
 
 describe("PortalMobileNav", () => {
-  it("only exposes Overview and More — no internal Command Center items", () => {
+  it("exposes Overview, the now-live Leads tab, and More — and only ever links to portal routes", () => {
     render(<PortalMobileNav accent="#DC2626" />);
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(nav.textContent).toContain("Overview");
+    expect(nav.textContent).toContain("Leads");
     expect(nav.textContent).toContain("More");
 
-    const internalLabels = [...SIDEBAR_PRIMARY_NAV, ...SIDEBAR_SECONDARY_NAV].map((i) => i.label);
-    for (const label of internalLabels) {
-      expect(nav.textContent).not.toContain(label);
+    // The label "Leads" is shared with the internal sidebar, so the invariant
+    // that actually matters is by HREF, not text: every real tab links under
+    // /portal and never at an internal Command Center route (internal Leads is
+    // "/leads"; the portal's own Leads tab is "/portal/leads").
+    const internalHrefs = new Set([...SIDEBAR_PRIMARY_NAV, ...SIDEBAR_SECONDARY_NAV].map((i) => i.href));
+    const links = [...nav.querySelectorAll("a")];
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      const href = link.getAttribute("href") ?? "";
+      expect(href.startsWith("/portal")).toBe(true);
+      expect(internalHrefs.has(href)).toBe(false);
     }
+  });
+
+  it("routes the Leads tab to /portal/leads", () => {
+    render(<PortalMobileNav accent="#DC2626" />);
+    expect(screen.getByRole("link", { name: /Leads/ })).toHaveAttribute("href", "/portal/leads");
   });
 
   it("marks Overview active on /portal", () => {
