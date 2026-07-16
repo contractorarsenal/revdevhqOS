@@ -144,7 +144,7 @@ export function ClientLeadsView({
           {filtered.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border py-8 text-center text-[12.5px] text-muted-foreground">No leads match your filters.</p>
           ) : view === "list" ? (
-            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
               {filtered.map((lead) => (
                 <LeadCard key={lead.id} lead={lead} onOpen={() => setSelectedId(lead.id)} />
               ))}
