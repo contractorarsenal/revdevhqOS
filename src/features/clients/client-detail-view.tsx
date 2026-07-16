@@ -158,7 +158,7 @@ export function ClientDetailView({
           </TabsList>
 
           <TabsContent value="overview" className="mt-4 space-y-4">
-            <ClientLeadSummaryCard summary={leadSummary} clientName={client.name} />
+            <ClientLeadSummaryCard summary={leadSummary} clientName={client.name} clientId={client.id} />
 
             <section className="rounded-lg border border-border bg-card shadow-sm">
               <header className="flex items-center border-b border-border/60 px-4 py-2.5">

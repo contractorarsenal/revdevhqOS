@@ -5,20 +5,20 @@ import type { ClientLeadSummary } from "@/server/queries/client-leads";
 
 /** Real, client-scoped lead performance. Archived leads are excluded (see
  * clientLeadSummary). Renders an explicit empty state — never fake counts. */
-export function ClientLeadSummaryCard({ summary, clientName }: { summary: ClientLeadSummary; clientName: string }) {
+export function ClientLeadSummaryCard({ summary, clientName, clientId }: { summary: ClientLeadSummary; clientName: string; clientId: string }) {
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
       <header className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
         <h2 className="text-[12.5px] font-semibold">Leads Performance</h2>
-        <Link href="/leads" className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
-          All leads <ArrowRight className="size-3" />
+        <Link href={`/leads?client=${clientId}`} className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
+          View All Client Leads <ArrowRight className="size-3" />
         </Link>
       </header>
       {summary.total === 0 ? (
         <div className="flex items-center gap-3 px-4 py-5">
           <Users className="size-4 text-muted-foreground" />
           <p className="text-[12.5px] text-muted-foreground">
-            No leads linked to {clientName} yet. Link leads to this client from the Leads page.
+            No leads linked to {clientName} yet. Add one manually, or leads generated for this client will appear here automatically.
           </p>
         </div>
       ) : (

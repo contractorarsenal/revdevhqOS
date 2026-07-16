@@ -7,10 +7,18 @@ import { LeadsView } from "@/features/leads/leads-view";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ new?: string }>;
+  searchParams: Promise<{ new?: string; client?: string }>;
 }) {
   const ctx = await requireWorkspace();
   const [leads, members, clients] = await Promise.all([listLeads(ctx.workspace.id), listMembers(ctx.workspace.id), listClients(ctx.workspace.id)]);
   const params = await searchParams;
-  return <LeadsView leads={leads} members={members} clients={clients.map((c) => ({ id: c.id, name: c.name }))} openNew={params.new === "1"} />;
+  return (
+    <LeadsView
+      leads={leads}
+      members={members}
+      clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+      openNew={params.new === "1"}
+      clientFilter={params.client}
+    />
+  );
 }

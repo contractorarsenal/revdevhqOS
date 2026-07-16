@@ -77,6 +77,28 @@ export const leadSchema = z.object({
   notes: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
 });
 
+/** Internal manual entry of a lead FOR a client — feeds that client's
+ * portal immediately. Distinct from leadSchema (agency-prospect leads):
+ * status is the 5-value client-facing workflow, clientId is required. */
+export const clientLeadManualEntrySchema = z.object({
+  clientId: z.string().uuid("Select a client"),
+  name: z.string().trim().min(1, "Name is required").max(200),
+  email: optionalTrimmed,
+  phone: optionalTrimmed,
+  requestedService: optionalTrimmed,
+  source: z.enum(["Website", "Google Business Profile", "Google Ads", "Facebook", "Referral", "Phone", "Manual", "Other"]).default("Manual"),
+  receivedAt: z.string().min(1, "Date received is required"),
+  status: z.enum(["new", "contacted", "estimate_scheduled", "won", "lost"]).default("new"),
+  estimatedValue: optionalMoneyField,
+});
+
+/** Portal-side lead mutations — each field is edited independently. */
+export const clientLeadStatusSchema = z.object({ status: z.enum(["new", "contacted", "estimate_scheduled", "won", "lost"]) });
+export const clientLeadAssignSchema = z.object({ profileId: uuidOrNull });
+export const clientLeadEstimateSchema = z.object({ estimatedValue: optionalMoneyField });
+export const clientLeadClosedValueSchema = z.object({ closedValue: optionalMoneyField });
+export const clientLeadNoteSchema = z.object({ note: z.string().trim().min(1, "Note cannot be empty").max(2000) });
+
 export const stageSchema = z.object({
   name: z.string().trim().min(1).max(80),
   probability: z.coerce.number().int().min(0).max(100).default(0),

@@ -18,6 +18,27 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/* ========== portal role hierarchy ========== */
+
+const PORTAL_ROLE_LEVEL: Record<ClientPortalRole, number> = {
+  client_read_only: 1,
+  client_member: 2,
+  client_owner: 3,
+};
+
+/** client_owner and client_member can both manage leads; client_read_only
+ * is view-only. Mirrors lib/permissions' hasRole/assertRole shape, kept
+ * separate since portal roles are a distinct hierarchy from WorkspaceRole. */
+export function hasPortalRole(role: ClientPortalRole, required: ClientPortalRole): boolean {
+  return PORTAL_ROLE_LEVEL[role] >= PORTAL_ROLE_LEVEL[required];
+}
+
+export function assertPortalRole(role: ClientPortalRole, required: ClientPortalRole): void {
+  if (!hasPortalRole(role, required)) {
+    throw new Error("You do not have permission to perform this action.");
+  }
+}
+
 /* ========== invite acceptance validation ========== */
 
 export type InviteForValidation = {

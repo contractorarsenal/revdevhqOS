@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db as appDb } from "@/lib/db";
 import {
   clients, leads, opportunities, tasks, pipelineStages, invoices, workspaceMembers, projects,
+  clientPortalMemberships,
 } from "@/lib/db/schema";
 
 /**
@@ -96,6 +97,44 @@ export async function assertWorkspaceProject(workspaceId: string, projectId: Id)
     .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
     .limit(1);
   if (!row) throw new Error("Project not found in this workspace.");
+}
+
+/**
+ * Client-portal ownership guard: a lead must belong to BOTH the caller's
+ * workspace AND their specific client — never workspace alone. This is the
+ * one check that makes cross-client lead access structurally impossible for
+ * every portal lead mutation. Throws a generic "not found" (never
+ * distinguishing "wrong workspace" from "wrong client" from "doesn't
+ * exist") so a client can't probe for other clients' lead ids.
+ */
+export async function assertClientOwnedLead(workspaceId: string, clientId: string, leadId: Id): Promise<void> {
+  if (!leadId) throw new Error("Lead not found.");
+  const [row] = await guardDeps.db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId), isNull(leads.archivedAt)))
+    .limit(1);
+  if (!row) throw new Error("Lead not found.");
+}
+
+/** An assignee must be an ACTIVE client_owner/client_member of the SAME
+ * client — never a member of another client, never read-only, never a
+ * suspended/revoked/invited membership. */
+export async function assertClientEligibleAssignee(workspaceId: string, clientId: string, profileId: Id): Promise<void> {
+  if (!profileId) return; // unassigning is always allowed
+  const [row] = await guardDeps.db
+    .select({ role: clientPortalMemberships.role })
+    .from(clientPortalMemberships)
+    .where(and(
+      eq(clientPortalMemberships.profileId, profileId),
+      eq(clientPortalMemberships.workspaceId, workspaceId),
+      eq(clientPortalMemberships.clientId, clientId),
+      eq(clientPortalMemberships.status, "active")
+    ))
+    .limit(1);
+  if (!row || !["client_owner", "client_member"].includes(row.role)) {
+    throw new Error("That person is not an eligible assignee for this client's leads.");
+  }
 }
 
 /** Convenience: guard the standard task/note relation set in one call. */

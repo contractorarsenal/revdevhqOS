@@ -7,7 +7,11 @@ import {
 /* ========== enums ========== */
 export const workspaceRole = pgEnum("workspace_role", ["owner", "admin", "manager", "member", "viewer"]);
 export const clientStatus = pgEnum("client_status", ["onboarding", "active", "past_due", "paused", "canceled", "archived"]);
-export const leadStatus = pgEnum("lead_status", ["new", "contacted", "qualified", "unqualified", "converted", "lost"]);
+// "estimate_scheduled" and "won" are used exclusively by client-generated
+// leads (leads.client_id set) — see lib/leads-client.ts's CLIENT_LEAD_STATUSES
+// for the exact 5-value client-facing subset. "qualified"/"unqualified"/
+// "converted" remain exclusive to agency-prospect leads (client_id null).
+export const leadStatus = pgEnum("lead_status", ["new", "contacted", "qualified", "unqualified", "converted", "lost", "estimate_scheduled", "won"]);
 export const opportunityStatus = pgEnum("opportunity_status", ["open", "won", "lost"]);
 export const subscriptionStatus = pgEnum("subscription_status", ["trial", "active", "past_due", "paused", "canceled", "completed"]);
 export const billingFrequency = pgEnum("billing_frequency", ["one_time", "weekly", "monthly", "quarterly", "yearly"]);
@@ -115,10 +119,24 @@ export const leads = pgTable("leads", {
   serviceInterest: text("service_interest"),
   estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
   estimatedMrr: numeric("estimated_mrr", { precision: 12, scale: 2 }),
+  // Actual closed/won revenue — only meaningful once status = "won". Distinct
+  // from estimatedValue (a guess made before the deal closes).
+  closedValue: numeric("closed_value", { precision: 12, scale: 2 }),
   ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
   lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
+  // When the lead actually came in — settable independently of createdAt
+  // (our row's insert time) so manual backfills and future webhook/n8n
+  // ingestion can record the source system's real timestamp.
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  estimateScheduledAt: timestamp("estimate_scheduled_at", { withTimezone: true }),
+  wonAt: timestamp("won_at", { withTimezone: true }),
+  lostAt: timestamp("lost_at", { withTimezone: true }),
+  // Client-visible — read/written by both the internal team and the client
+  // portal. Never confuse with internalNotes below.
   notes: text("notes"),
+  // Staff-only. Never selected by any client-portal-scoped query.
+  internalNotes: text("internal_notes"),
   convertedClientId: uuid("converted_client_id").references(() => clients.id, { onDelete: "set null" }),
   // A lead GENERATED FOR one of our clients (Contractor Arsenal delivers
   // leads to contractors) — distinct from convertedClientId, which records
