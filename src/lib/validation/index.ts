@@ -388,3 +388,26 @@ export const clientPortalSettingsSchema = z.object({
     .nullable()
     .optional(),
 });
+
+/* ========== approvals ("Needs Jay") ========== */
+export const APPROVAL_TYPES = [
+  "pricing", "deployment", "payment_issue", "refund_cancellation",
+  "client_issue", "scope_decision", "security", "blocker", "other",
+] as const;
+
+export const createApprovalSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(200),
+  description: optionalTrimmed,
+  type: z.enum(APPROVAL_TYPES).default("other"),
+  riskSummary: optionalTrimmed,
+  requestedAction: optionalTrimmed,
+  clientId: uuidOrNull,
+  projectId: uuidOrNull,
+  leadId: uuidOrNull,
+  taskId: uuidOrNull,
+});
+
+export const resolveApprovalSchema = z.object({
+  status: z.enum(["approved", "declined", "resolved", "cancelled"]),
+  resolutionNotes: optionalTrimmed,
+});

@@ -4,6 +4,7 @@ import { timed } from "@/lib/dev/timing";
 import {
   getDashboardMetrics, getMrrTrend, getCollectedByMonth, getRecentActivity, getAttentionQueue,
 } from "@/server/queries/metrics";
+import { countPendingApprovals } from "@/server/queries/approvals";
 import { listPayments } from "@/server/queries/billing";
 import { listDueSubscriptions } from "@/server/queries/recurring";
 import { listTodayFeed } from "@/server/queries/calendar";
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
   const wsId = ctx.workspace.id;
   const today = todayInTimezone(ctx.workspace.timezone);
   const { start: todayStart, end: todayEnd } = dayBoundsInTimezone(ctx.workspace.timezone, today);
-  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule, goals] = await timed("dashboard queries", () => Promise.all([
+  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule, goals, needsJayCount] = await timed("dashboard queries", () => Promise.all([
     getDashboardMetrics(wsId, ctx.workspace.timezone),
     getMrrTrend(wsId),
     getCollectedByMonth(wsId, ctx.workspace.timezone),
@@ -46,6 +47,7 @@ export default async function DashboardPage() {
     listDueSubscriptions(wsId, ctx.workspace.timezone),
     listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
     getDashboardGoals(wsId, ctx.workspace.timezone),
+    countPendingApprovals(wsId),
   ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
@@ -59,6 +61,11 @@ export default async function DashboardPage() {
       />
 
       <MetricGrid>
+        <Link href="/approvals" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
+          <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Needs Jay</p>
+          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{needsJayCount}</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{needsJayCount === 0 ? "all clear" : "pending decisions"}</p>
+        </Link>
         <MetricCard label="MRR" value={formatMoney(metrics.mrr)} hint="active subscriptions" />
         <MetricCard label="ARR" value={formatMoney(metrics.arr)} hint="MRR × 12" />
         <MetricCard label="Collected today" value={formatMoney(metrics.collectedToday)} hint={`month: ${formatMoney(metrics.collectedThisMonth)}`} />

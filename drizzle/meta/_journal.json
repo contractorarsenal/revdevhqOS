@@ -120,6 +120,20 @@
       "when": 1784141575991,
       "tag": "0016_client_lead_management",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789662877856,
+      "tag": "0017_mixed_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789662916574,
+      "tag": "0018_approvals_rls",
+      "breakpoints": true
     }
   ]
 }

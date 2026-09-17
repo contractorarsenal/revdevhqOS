@@ -505,6 +505,43 @@ export const goalProgressUpdates = pgTable("goal_progress_updates", {
   index("goal_progress_updates_goal_created_idx").on(t.goalId, t.createdAt),
 ]);
 
+/* ========== approvals ("Needs Jay") ========== */
+export const approvalType = pgEnum("approval_type", [
+  "pricing", "deployment", "payment_issue", "refund_cancellation",
+  "client_issue", "scope_decision", "security", "blocker", "other",
+]);
+export const approvalStatus = pgEnum("approval_status", ["pending", "approved", "declined", "resolved", "cancelled"]);
+
+/**
+ * A decision request that needs an owner's judgment call — not a filtered
+ * task list. requestedBy is whoever raised it (any workspace member);
+ * resolving (approve/decline/resolve/cancel) is an owner-level action.
+ * History lives in activity_logs, not a second audit trail here.
+ */
+export const approvals = pgTable("approvals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  type: approvalType("type").notNull().default("other"),
+  status: approvalStatus("status").notNull().default("pending"),
+  requestedBy: uuid("requested_by").references(() => profiles.id, { onDelete: "set null" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  riskSummary: text("risk_summary"),
+  requestedAction: text("requested_action"),
+  resolutionNotes: text("resolution_notes"),
+  resolvedBy: uuid("resolved_by").references(() => profiles.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("approvals_workspace_status_idx").on(t.workspaceId, t.status),
+  index("approvals_workspace_created_idx").on(t.workspaceId, t.createdAt),
+]);
+
 /* ========== client portal ========== */
 export const clientPortalRole = pgEnum("client_portal_role", ["client_owner", "client_member", "client_read_only"]);
 export const clientPortalStatus = pgEnum("client_portal_status", ["invited", "active", "suspended", "revoked"]);

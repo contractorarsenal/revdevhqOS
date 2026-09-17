@@ -7,7 +7,7 @@ import {
 describe("SIDEBAR_PRIMARY_NAV", () => {
   it("keeps the desktop sidebar order unchanged", () => {
     expect(SIDEBAR_PRIMARY_NAV.map((i) => i.href)).toEqual([
-      "/dashboard", "/pipeline", "/leads", "/clients", "/calendar",
+      "/dashboard", "/approvals", "/pipeline", "/leads", "/clients", "/calendar",
       "/billing", "/expenses", "/reports", "/goals", "/tasks", "/projects",
     ]);
   });
