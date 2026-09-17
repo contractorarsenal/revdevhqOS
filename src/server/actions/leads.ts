@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { leads, opportunities, pipelineStages } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
@@ -63,13 +63,20 @@ export async function createLead(input: unknown): Promise<ActionResult<{ id: str
 export async function updateLead(leadId: string, input: unknown): Promise<ActionResult> {
   try {
     const ctx = await authorize("member");
-    await ownedLead(ctx.workspace.id, leadId);
+    const existing = await ownedLead(ctx.workspace.id, leadId);
     const data = leadSchema.parse(input);
     await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
     await db
       .update(leads)
       .set(leadValues(data))
       .where(and(eq(leads.id, leadId), eq(leads.workspaceId, ctx.workspace.id)));
+    if (existing.status !== data.status) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "lead.status_changed", entityType: "lead", entityId: leadId, leadId,
+        metadata: { from: existing.status, to: data.status },
+      });
+    }
     revalidatePath("/leads");
     return { ok: true };
   } catch (err) {
@@ -160,7 +167,6 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionRe
   try {
     const ctx = await authorize("member");
     const lead = await ownedLead(ctx.workspace.id, leadId);
-    if (lead.status === "converted") throw new Error("This lead was already converted.");
 
     const [firstStage] = await db
       .select()
@@ -171,6 +177,17 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionRe
     if (!firstStage) throw new Error("Create at least one pipeline stage first.");
 
     const oppId = await db.transaction(async (tx) => {
+      // Claim the lead atomically first — this is the actual mutex. Two
+      // concurrent conversions both pass the pre-check above, but only one
+      // of these conditional UPDATEs can return a row; the loser sees 0
+      // rows and bails before ever inserting a duplicate opportunity.
+      const claimed = await tx
+        .update(leads)
+        .set({ status: "converted" })
+        .where(and(eq(leads.id, lead.id), eq(leads.workspaceId, ctx.workspace.id), ne(leads.status, "converted")))
+        .returning({ id: leads.id });
+      if (claimed.length === 0) throw new Error("This lead was already converted.");
+
       const [opp] = await tx
         .insert(opportunities)
         .values({
@@ -184,7 +201,6 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionRe
           ownerId: lead.ownerId ?? ctx.user.id,
         })
         .returning();
-      await tx.update(leads).set({ status: "qualified" }).where(eq(leads.id, lead.id));
       return opp.id;
     });
 

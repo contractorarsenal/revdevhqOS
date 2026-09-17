@@ -18,7 +18,7 @@ import { formatMoney } from "@/lib/finance/metrics";
 import { ExpenseFormDialog } from "./expense-form-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export function ExpensesView({ expenses }: { expenses: any[] }) {
+export function ExpensesView({ expenses, thisMonth }: { expenses: any[]; thisMonth: string }) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -34,7 +34,6 @@ export function ExpensesView({ expenses }: { expenses: any[] }) {
     (e) => (month === "all" || e.expenseDate.slice(0, 7) === month) && (category === "all" || e.category === category)
   );
   const total = filtered.reduce((sum, e) => sum + Number(e.amount), 0);
-  const thisMonth = new Date().toISOString().slice(0, 7);
   const thisMonthTotal = active
     .filter((e) => e.frequency === "monthly" ? e.expenseDate.slice(0, 7) <= thisMonth : e.expenseDate.slice(0, 7) === thisMonth)
     .reduce((sum, e) => sum + Number(e.amount), 0);

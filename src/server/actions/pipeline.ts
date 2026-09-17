@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   pipelineStages, opportunities, leads, clients, contacts, subscriptions, services, tasks,
@@ -10,6 +10,7 @@ import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { logActivity } from "@/server/activity";
 import { stageSchema, opportunitySchema, convertOpportunitySchema } from "@/lib/validation";
 import { assertWorkspaceRelations } from "@/server/workspace-guards";
+import { todayInTimezone } from "@/lib/date-tz";
 
 async function ownedStage(workspaceId: string, stageId: string) {
   const [row] = await db
@@ -223,6 +224,7 @@ export async function convertOpportunityToClient(input: unknown): Promise<Action
     const data = convertOpportunitySchema.parse(input);
     const opp = await ownedOpportunity(ctx.workspace.id, data.opportunityId);
     if (opp.clientId) throw new Error("This opportunity is already linked to a client.");
+    const today = todayInTimezone(ctx.workspace.timezone);
 
     for (const sub of data.subscriptions) {
       const [svc] = await db
@@ -240,6 +242,19 @@ export async function convertOpportunityToClient(input: unknown): Promise<Action
       .limit(1);
 
     const clientId = await db.transaction(async (tx) => {
+      // Claim the opportunity atomically first — this is the real mutex.
+      // Two concurrent conversions both pass the pre-check above, but only
+      // one of these conditional UPDATEs can return a row (clientId isn't
+      // set until later in this same transaction, so `status != 'won'` is
+      // what actually excludes the loser); it sees 0 rows and bails before
+      // ever creating a duplicate client.
+      const claimed = await tx
+        .update(opportunities)
+        .set({ status: "won" })
+        .where(and(eq(opportunities.id, opp.id), ne(opportunities.status, "won"), isNull(opportunities.clientId)))
+        .returning({ id: opportunities.id });
+      if (claimed.length === 0) throw new Error("This opportunity is already linked to a client.");
+
       const [client] = await tx
         .insert(clients)
         .values({
@@ -247,7 +262,7 @@ export async function convertOpportunityToClient(input: unknown): Promise<Action
           name: data.clientName,
           status: "onboarding",
           ownerId: opp.ownerId ?? ctx.user.id,
-          startDate: new Date().toISOString().slice(0, 10),
+          startDate: today,
         })
         .returning();
 
@@ -270,7 +285,7 @@ export async function convertOpportunityToClient(input: unknown): Promise<Action
             amount: String(s.amount),
             frequency: s.frequency,
             status: "active" as const,
-            startDate: new Date().toISOString().slice(0, 10),
+            startDate: today,
           }))
         );
       }
@@ -287,7 +302,6 @@ export async function convertOpportunityToClient(input: unknown): Promise<Action
       await tx
         .update(opportunities)
         .set({
-          status: "won",
           wonAt: new Date(),
           clientId: client.id,
           stageId: wonStage ? wonStage.id : opp.stageId,

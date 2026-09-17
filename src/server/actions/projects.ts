@@ -89,6 +89,28 @@ export async function updateProject(projectId: string, input: unknown): Promise<
       })
       .where(eq(projects.id, projectId));
 
+    if (existing.status !== data.status) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "project.stage_changed", entityType: "project", entityId: projectId,
+        metadata: { from: existing.status, to: data.status },
+      });
+    }
+    if (existing.waitingOn !== (data.waitingOn ?? null)) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "project.waiting_on_changed", entityType: "project", entityId: projectId,
+        metadata: { from: existing.waitingOn, to: data.waitingOn ?? null },
+      });
+    }
+    if (existing.nextAction !== (data.nextAction ?? null)) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "project.next_action_changed", entityType: "project", entityId: projectId,
+        metadata: { from: existing.nextAction, to: data.nextAction ?? null },
+      });
+    }
+
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     // projects_completed goal metric: revalidate on any transition into or
@@ -103,11 +125,16 @@ export async function updateProject(projectId: string, input: unknown): Promise<
 export async function archiveProject(projectId: string): Promise<ActionResult> {
   try {
     const ctx = await authorize("manager");
-    await ownedProject(ctx.workspace.id, projectId);
+    const existing = await ownedProject(ctx.workspace.id, projectId);
     await db
       .update(projects)
       .set({ status: "closed", archivedAt: new Date() })
       .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspace.id)));
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "project.archived", entityType: "project", entityId: projectId,
+      metadata: { from: existing.status },
+    });
     revalidatePath("/projects");
     return { ok: true };
   } catch (err) {

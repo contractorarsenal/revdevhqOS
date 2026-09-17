@@ -9,6 +9,7 @@ import { logActivity } from "@/server/activity";
 import { serviceSchema, subscriptionSchema, subscriptionEditSchema, invoiceSchema, paymentSchema, expenseSchema } from "@/lib/validation";
 import { roundCents, toAmount, recalcInvoiceForPaymentChange, paymentAttribution, currentDueMonth } from "@/lib/finance/metrics";
 import { revalidateGoalPaths as revalidateGoals } from "./revalidate-goals";
+import { todayInTimezone } from "@/lib/date-tz";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");
@@ -172,7 +173,7 @@ export async function createInvoice(input: unknown): Promise<ActionResult<{ id: 
             ? `${data.billingMonth}-01`
             : data.issueDate
               ? `${data.issueDate.slice(0, 7)}-01`
-              : `${new Date().toISOString().slice(0, 7)}-01`,
+              : `${todayInTimezone(ctx.workspace.timezone).slice(0, 7)}-01`,
           issueDate: data.issueDate ?? null,
           dueDate: data.dueDate ?? null,
           total: String(total),
@@ -236,25 +237,34 @@ export async function markInvoicePaid(invoiceId: string): Promise<ActionResult> 
       .where(and(eq(invoices.id, invoiceId), eq(invoices.workspaceId, ctx.workspace.id)))
       .limit(1);
     if (!inv) throw new Error("Invoice not found in this workspace.");
-    const balance = roundCents(toAmount(inv.total) - toAmount(inv.amountPaid));
-    if (balance <= 0) throw new Error("This invoice has no remaining balance.");
-    await db.transaction(async (tx) => {
+
+    const balance = await db.transaction(async (tx) => {
+      // Re-read under a row lock — two concurrent "mark paid" clicks must
+      // not both read the same stale amountPaid and both insert a full
+      // payment. The second call, once the first commits, sees a
+      // recalculated balance of 0 here and correctly bails out.
+      const [locked] = await tx.select().from(invoices).where(eq(invoices.id, inv.id)).for("update");
+      const remaining = roundCents(toAmount(locked.total) - toAmount(locked.amountPaid));
+      if (remaining <= 0) throw new Error("This invoice has no remaining balance.");
+
       await tx.insert(payments).values({
         workspaceId: ctx.workspace.id,
-        clientId: inv.clientId,
-        invoiceId: inv.id,
-        amount: String(balance),
+        clientId: locked.clientId,
+        invoiceId: locked.id,
+        amount: String(remaining),
         status: "succeeded",
-        paymentType: inv.billingFrequency === "monthly" ? "monthly" : "one_time",
-        billingMonth: inv.billingMonth ?? `${new Date().toISOString().slice(0, 7)}-01`,
+        paymentType: locked.billingFrequency === "monthly" ? "monthly" : "one_time",
+        billingMonth: locked.billingMonth ?? `${todayInTimezone(ctx.workspace.timezone).slice(0, 7)}-01`,
         method: "manual",
         paidAt: new Date(),
       });
       await tx
         .update(invoices)
-        .set({ amountPaid: inv.total, status: "paid" })
-        .where(eq(invoices.id, inv.id));
+        .set({ amountPaid: locked.total, status: "paid" })
+        .where(eq(invoices.id, locked.id));
+      return remaining;
     });
+
     await logActivity({
       workspaceId: ctx.workspace.id, actorId: ctx.user.id,
       action: "payment.recorded", entityType: "payment", clientId: inv.clientId,
@@ -318,12 +328,18 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
         paidAt: new Date(data.paidAt),
       });
       if (invoice && data.status === "succeeded") {
-        const newPaid = roundCents(toAmount(invoice.amountPaid) + data.amount);
-        const paidInFull = newPaid >= toAmount(invoice.total);
+        // Re-read under a row lock immediately before computing the new
+        // balance — the pre-transaction `invoice` read above is only used
+        // for attribution (clientId/type/month), which can't race; the
+        // actual balance must come from a locked, current value or two
+        // concurrent payments would both add to the same stale amountPaid.
+        const [locked] = await tx.select().from(invoices).where(eq(invoices.id, invoice.id)).for("update");
+        const newPaid = roundCents(toAmount(locked.amountPaid) + data.amount);
+        const paidInFull = newPaid >= toAmount(locked.total);
         await tx
           .update(invoices)
-          .set({ amountPaid: String(newPaid), status: paidInFull ? "paid" : invoice.status })
-          .where(eq(invoices.id, invoice.id));
+          .set({ amountPaid: String(newPaid), status: paidInFull ? "paid" : locked.status })
+          .where(eq(invoices.id, locked.id));
       }
     });
 
@@ -359,7 +375,10 @@ async function recalcLinkedInvoice(
   after: { status: string; amount: string | number } | null
 ) {
   if (!invoiceId) return;
-  const [inv] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  // Locked for the same reason as recordPayment/markInvoicePaid: this helper
+  // is shared by updatePayment/voidPayment/restorePayment, any of which
+  // could race another payment mutation against the same invoice.
+  const [inv] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for("update");
   if (!inv) return;
   const next = recalcInvoiceForPaymentChange(inv, before, after);
   await tx
@@ -607,7 +626,11 @@ export async function markSubscriptionCollected(subscriptionId: string): Promise
       .limit(1);
     if (!sub) throw new Error("Subscription not found in this workspace.");
 
-    const dueMonth = currentDueMonth(sub);
+    // Anchor "due" to the workspace-local calendar date, same pattern as
+    // recurring.ts/client-billing.ts — a raw `new Date()` here would use
+    // server UTC and could pick the wrong due month near a month boundary.
+    const today = new Date(`${todayInTimezone(ctx.workspace.timezone)}T12:00:00Z`);
+    const dueMonth = currentDueMonth(sub, today);
     if (!dueMonth) throw new Error("This subscription has no payment currently due.");
 
     const [dup] = await db
@@ -621,17 +644,32 @@ export async function markSubscriptionCollected(subscriptionId: string): Promise
       .limit(1);
     if (dup) throw new Error("A payment for this billing month has already been recorded.");
 
-    await db.insert(payments).values({
-      workspaceId: ctx.workspace.id,
-      clientId: sub.clientId,
-      subscriptionId: sub.id,
-      amount: sub.amount,
-      status: "succeeded",
-      paymentType: "monthly",
-      billingMonth: dueMonth,
-      method: "manual",
-      paidAt: new Date(),
-    });
+    try {
+      await db.insert(payments).values({
+        workspaceId: ctx.workspace.id,
+        clientId: sub.clientId,
+        subscriptionId: sub.id,
+        amount: sub.amount,
+        status: "succeeded",
+        paymentType: "monthly",
+        billingMonth: dueMonth,
+        method: "manual",
+        paidAt: new Date(),
+      });
+    } catch (err) {
+      // The above SELECT is a fast-path UX check only, not the real guard —
+      // it's still a TOCTOU race between two concurrent clicks. The actual
+      // guard is the partial unique index on (subscription_id,
+      // billing_month) for non-voided payments; a violation here means
+      // another request won the race in between. The constraint name lives
+      // on the driver error's `.cause`, not `DrizzleQueryError#message`
+      // (which is just "Failed query: ...\nparams: ..."), so check there.
+      const cause = err instanceof Error ? (err.cause as { constraint?: string } | undefined) : undefined;
+      if (cause?.constraint === "payments_subscription_billing_month_unique") {
+        return { ok: false, error: "A payment for this billing month has already been recorded." };
+      }
+      throw err;
+    }
 
     await logActivity({
       workspaceId: ctx.workspace.id, actorId: ctx.user.id,

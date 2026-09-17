@@ -225,6 +225,9 @@ export const opportunities = pgTable("opportunities", {
 }, (t) => [
   index("opportunities_workspace_stage_idx").on(t.workspaceId, t.stageId),
   index("opportunities_workspace_status_idx").on(t.workspaceId, t.status),
+  // Defense-in-depth backstop for convertLeadToOpportunity's conditional-
+  // update mutex: a lead should never end up with two opportunities.
+  uniqueIndex("opportunities_lead_id_unique").on(t.leadId).where(sql`${t.leadId} is not null`),
 ]);
 
 /* ========== services & billing ========== */
@@ -320,6 +323,12 @@ export const payments = pgTable("payments", {
   index("payments_workspace_billing_month_idx").on(t.workspaceId, t.billingMonth),
   index("payments_invoice_idx").on(t.invoiceId),
   index("payments_subscription_month_idx").on(t.subscriptionId, t.billingMonth),
+  // Authoritative guard behind markSubscriptionCollected's pre-check: only
+  // one non-voided payment per subscription per billing month. A void
+  // frees the month back up for a corrected re-collection.
+  uniqueIndex("payments_subscription_billing_month_unique")
+    .on(t.subscriptionId, t.billingMonth)
+    .where(sql`${t.subscriptionId} is not null and ${t.billingMonth} is not null and ${t.status} != 'voided'`),
 ]);
 
 export const expenseStatus = pgEnum("expense_status", ["active", "archived"]);

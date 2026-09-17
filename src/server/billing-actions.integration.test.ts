@@ -40,7 +40,11 @@ vi.mock("@/server/authorize", async () => {
   };
 });
 
-import { updateSubscription, updatePayment, voidPayment, restorePayment, deletePayment } from "@/server/actions/billing";
+import {
+  updateSubscription, updatePayment, voidPayment, restorePayment, deletePayment,
+  recordPayment, markInvoicePaid, markSubscriptionCollected, createInvoice,
+} from "@/server/actions/billing";
+import { invoices, payments } from "@/lib/db/schema";
 
 const WS1 = "11111111-1111-4111-8111-111111111111";
 const WS2 = "22222222-2222-4222-8222-222222222222";
@@ -65,6 +69,18 @@ beforeAll(async () => {
   // Production column names/types, FK-free stubs — drizzle's full-row
   // select() needs every schema column present.
   await client.exec(`
+    CREATE TABLE clients (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id uuid NOT NULL,
+      name text NOT NULL,
+      website text, email text, phone text, industry text, portal_accent_color text, address text,
+      status text NOT NULL DEFAULT 'onboarding',
+      owner_id uuid,
+      start_date date,
+      archived_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE subscriptions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id uuid NOT NULL,
@@ -100,6 +116,8 @@ beforeAll(async () => {
       previous_status text,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE UNIQUE INDEX payments_subscription_billing_month_unique ON payments (subscription_id, billing_month)
+      WHERE subscription_id IS NOT NULL AND billing_month IS NOT NULL AND status != 'voided';
     CREATE TABLE invoices (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id uuid NOT NULL,
@@ -116,6 +134,17 @@ beforeAll(async () => {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE UNIQUE INDEX invoices_workspace_number_unique ON invoices (workspace_id, number);
+    CREATE TABLE invoice_items (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      invoice_id uuid NOT NULL,
+      service_id uuid,
+      description text NOT NULL,
+      quantity numeric(10,2) NOT NULL DEFAULT 1,
+      unit_price numeric(12,2) NOT NULL,
+      amount numeric(12,2) NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
   `);
 });
 
@@ -129,7 +158,8 @@ let payId: string;
 beforeEach(async () => {
   revalidatePath.mockClear();
   setCtx(WS1, "admin");
-  await client.exec(`DELETE FROM subscriptions; DELETE FROM payments;`);
+  await client.exec(`DELETE FROM subscriptions; DELETE FROM payments; DELETE FROM invoices; DELETE FROM invoice_items; DELETE FROM clients;`);
+  await client.exec(`INSERT INTO clients (id, workspace_id, name) VALUES ('${CLIENT1}', '${WS1}', 'Acme Co')`);
   const sub = await client.query<{ id: string }>(
     `INSERT INTO subscriptions (workspace_id, client_id, service_id, amount, frequency, status, start_date, payment_day)
      VALUES ('${WS1}', '${CLIENT1}', '${SERVICE1}', 1400, 'monthly', 'active', '2026-01-01', 5) RETURNING id`
@@ -269,5 +299,101 @@ describe("void / restore / delete policy — audit-safe by construction", () => 
     expect((await deletePayment(payId)).ok).toBe(true);
     const gone = await client.query(`SELECT id FROM payments WHERE id = '${payId}'`);
     expect(gone.rows).toHaveLength(0);
+  });
+});
+
+async function createTestInvoice(total: number) {
+  const result = await createInvoice({
+    clientId: CLIENT1, number: `INV-${Math.random().toString(36).slice(2, 8)}`, status: "open",
+    billingFrequency: "one_time", issueDate: "2026-07-01",
+    items: [{ description: "Work", quantity: 1, unitPrice: total }],
+  });
+  if (!result.ok || !result.data) throw new Error("failed to seed invoice");
+  return result.data.id;
+}
+
+describe("recordPayment — concurrent payments against the same invoice never lose an update", () => {
+  it("two concurrent succeeded payments both land in the invoice's amountPaid (no stale-read overwrite)", async () => {
+    setCtx(WS1, "manager");
+    const invoiceId = await createTestInvoice(1000);
+
+    const payInput = (amount: number) => ({
+      clientId: "", invoiceId, amount, status: "succeeded",
+      paymentType: "one_time", billingMonth: "", method: "", reference: "", paidAt: "2026-07-10",
+    });
+    const [r1, r2] = await Promise.all([recordPayment(payInput(400)), recordPayment(payInput(300))]);
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+
+    const db = (globalThis as Record<string, unknown>).__testDb as ReturnType<typeof drizzle>;
+    const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
+    expect(Number(inv.amountPaid)).toBe(700); // NOT 400 or 300 — both increments must be reflected
+    const rows = await db.select().from(payments).where(eq(payments.invoiceId, invoiceId));
+    expect(rows).toHaveLength(2);
+  });
+});
+
+describe("markInvoicePaid — concurrent calls never double-collect the balance", () => {
+  it("two concurrent 'mark paid' calls insert exactly one payment for the balance", async () => {
+    setCtx(WS1, "manager");
+    const invoiceId = await createTestInvoice(500);
+
+    const [r1, r2] = await Promise.all([markInvoicePaid(invoiceId), markInvoicePaid(invoiceId)]);
+    const outcomes = [r1.ok, r2.ok];
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+    expect(outcomes.filter((ok) => !ok)).toHaveLength(1);
+
+    const db = (globalThis as Record<string, unknown>).__testDb as ReturnType<typeof drizzle>;
+    const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
+    expect(Number(inv.amountPaid)).toBe(500);
+    expect(inv.status).toBe("paid");
+    const rows = await db.select().from(payments).where(eq(payments.invoiceId, invoiceId));
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe("markSubscriptionCollected — concurrent clicks never double-collect a billing month", () => {
+  it("two concurrent calls for the same subscription insert exactly one non-voided payment for the due month", async () => {
+    setCtx(WS1, "manager");
+    // subId's payment fixture is for 2026-06 — void it so the fast-path
+    // pre-check doesn't just short-circuit both calls identically; either
+    // way only one insert should ever land, backstopped by the partial
+    // unique index regardless of which path each caller took.
+    await client.query(`UPDATE payments SET status = 'voided' WHERE id = '${payId}'`);
+
+    const [r1, r2] = await Promise.all([markSubscriptionCollected(subId), markSubscriptionCollected(subId)]);
+    const outcomes = [r1.ok, r2.ok];
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+    expect(outcomes.filter((ok) => !ok)).toHaveLength(1);
+    const rejected = (r1.ok ? r2 : r1) as { ok: false; error: string };
+    expect(rejected.error).toMatch(/already been recorded/i);
+
+    const db = (globalThis as Record<string, unknown>).__testDb as ReturnType<typeof drizzle>;
+    const rows = await db.select().from(payments).where(eq(payments.subscriptionId, subId));
+    const nonVoided = rows.filter((r) => r.status !== "voided");
+    expect(nonVoided).toHaveLength(1);
+  });
+});
+
+describe("createInvoice — billing month fallback uses the workspace-local calendar date", () => {
+  it("picks the workspace-local month even when it differs from the UTC month", async () => {
+    setCtx(WS1, "manager");
+    // 05:00 UTC on Jan 1 is still 21:00 on Dec 31 in America/Los_Angeles
+    // (UTC-8 in January) — the old `new Date().toISOString().slice(0,7)`
+    // fallback would wrongly stamp "2026-01", not the workspace's "2025-12".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T05:00:00Z"));
+    try {
+      const result = await createInvoice({
+        clientId: CLIENT1, number: `INV-TZ-${Math.random().toString(36).slice(2, 8)}`, status: "open",
+        billingFrequency: "one_time", items: [{ description: "Work", quantity: 1, unitPrice: 100 }],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok || !result.data) return;
+      const row = await client.query<{ billing_month: string }>(`SELECT billing_month::text FROM invoices WHERE id = '${result.data.id}'`);
+      expect(row.rows[0].billing_month).toBe("2025-12-01");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
