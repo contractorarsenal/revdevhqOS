@@ -5,10 +5,9 @@ import {
 } from "./nav-items";
 
 describe("SIDEBAR_PRIMARY_NAV", () => {
-  it("keeps the desktop sidebar order unchanged", () => {
+  it("keeps the desktop sidebar order unchanged — the 6-item daily operating loop", () => {
     expect(SIDEBAR_PRIMARY_NAV.map((i) => i.href)).toEqual([
-      "/dashboard", "/approvals", "/pipeline", "/leads", "/clients", "/client-requests", "/calendar",
-      "/billing", "/expenses", "/reports", "/goals", "/tasks", "/projects",
+      "/dashboard", "/leads", "/clients", "/projects", "/tasks", "/approvals",
     ]);
   });
 });
@@ -16,7 +15,7 @@ describe("SIDEBAR_PRIMARY_NAV", () => {
 describe("MOBILE_PRIMARY_NAV", () => {
   it("contains exactly 5 items in the specified order", () => {
     expect(MOBILE_PRIMARY_NAV).toHaveLength(5);
-    expect(MOBILE_PRIMARY_NAV.map((i) => i.label)).toEqual(["Dashboard", "Leads", "Clients", "Calendar", "More"]);
+    expect(MOBILE_PRIMARY_NAV.map((i) => i.label)).toEqual(["Dashboard", "Needs Jay", "Leads", "Clients", "More"]);
   });
 
   it("has no more than 5 primary destinations", () => {
@@ -66,13 +65,14 @@ describe("getActiveMobileTab", () => {
   it("activates Clients for a nested client detail route", () => {
     expect(getActiveMobileTab("/clients/abc-123")).toBe("/clients");
   });
-  it("activates Calendar for /calendar", () => {
-    expect(getActiveMobileTab("/calendar")).toBe("/calendar");
+  it("activates Needs Jay for /approvals", () => {
+    expect(getActiveMobileTab("/approvals")).toBe("/approvals");
   });
-  it("falls back to More for secondary routes like a goal detail page", () => {
+  it("falls back to More for secondary routes like a goal detail page or calendar", () => {
     expect(getActiveMobileTab("/goals/abc-123")).toBe("/more");
     expect(getActiveMobileTab("/billing")).toBe("/more");
     expect(getActiveMobileTab("/settings")).toBe("/more");
+    expect(getActiveMobileTab("/calendar")).toBe("/more");
   });
 });
 
@@ -82,6 +82,6 @@ describe("getPageTitle", () => {
     expect(getPageTitle("/goals")).toBe("Goals");
   });
   it("falls back to a default title for unknown routes", () => {
-    expect(getPageTitle("/some-unmapped-route")).toBe("revdevhqOS");
+    expect(getPageTitle("/some-unmapped-route")).toBe("CA Command Center");
   });
 });

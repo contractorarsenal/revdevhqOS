@@ -42,7 +42,7 @@ export function ExpensesView({ expenses, thisMonth }: { expenses: any[]; thisMon
     { accessorKey: "name", header: sortableHeader("Expense"), cell: ({ row }) => <span className="font-semibold">{row.original.name}</span> },
     { accessorKey: "category", header: "Category", cell: ({ row }) => <span className="capitalize">{row.original.category.replace("_", " ")}</span> },
     { accessorKey: "amount", header: sortableHeader("Amount"), cell: ({ row }) => <FinancialAmount value={row.original.amount} /> },
-    { accessorKey: "frequency", header: "Type", cell: ({ row }) => <StatusBadge status={row.original.frequency === "monthly" ? "monthly" : "one-time"} tone={row.original.frequency === "monthly" ? "indigo" : "neutral"} /> },
+    { accessorKey: "frequency", header: "Type", cell: ({ row }) => <StatusBadge status={row.original.frequency === "monthly" ? "monthly" : "one-time"} tone={row.original.frequency === "monthly" ? "blue" : "neutral"} /> },
     { accessorKey: "expenseDate", header: sortableHeader("Date") },
     { accessorKey: "vendor", header: "Vendor", cell: ({ row }) => row.original.vendor ?? <span className="text-muted-foreground">—</span> },
     {

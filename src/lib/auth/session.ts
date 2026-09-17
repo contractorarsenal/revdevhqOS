@@ -25,7 +25,7 @@ async function guardInfra<T>(operation: () => Promise<T>): Promise<T> {
     result = { ok: false, error };
   }
   if (result.ok) return result.value;
-  console.error("[revdevhqOS] database unavailable:", result.error);
+  console.error("[ca-command-center] database unavailable:", result.error);
   if (process.env.NODE_ENV !== "production") throw result.error;
   redirect("/setup-required");
 }

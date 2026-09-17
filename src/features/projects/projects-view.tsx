@@ -33,7 +33,7 @@ export function ProjectsView({ projects, members, clients }: { projects: any[]; 
           {active.map((p) => (
             <div key={p.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
               <div className="flex items-start gap-2">
-                <span className="mt-1 size-2.5 shrink-0 rounded-full" style={{ backgroundColor: p.color ?? "#4F46E5" }} />
+                <span className="mt-1 size-2.5 shrink-0 rounded-full" style={{ backgroundColor: p.color ?? "#71717a" }} />
                 <div className="min-w-0 flex-1">
                   <Link href={`/projects/${p.id}`} className="truncate text-[13.5px] font-semibold hover:underline">{p.name}</Link>
                   <p className="mt-0.5 text-[11.5px] text-muted-foreground">{p.clientName ?? "Internal"} · {p.ownerName ?? "Unassigned"}</p>

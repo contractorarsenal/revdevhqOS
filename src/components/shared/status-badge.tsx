@@ -4,19 +4,22 @@ const TONES = {
   green: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
   amber: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   red: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400",
-  indigo: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
+  blue: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   neutral: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
 } as const;
 
 type Tone = keyof typeof TONES;
 
+// "blue" is the neutral informational tone (in-progress/open-ended states) —
+// deliberately not the brand red, so status badges never compete with the
+// primary accent for attention. Reserve red for danger/urgent.
 const STATUS_TONE: Record<string, Tone> = {
   active: "green", paid: "green", succeeded: "green", completed: "green", won: "green", converted: "green", live: "green",
-  onboarding: "amber", trial: "amber", pending: "amber", qualified: "amber", contacted: "amber", in_progress: "indigo",
+  onboarding: "amber", trial: "amber", pending: "amber", qualified: "amber", contacted: "amber", in_progress: "blue",
   waiting_on_client: "amber", client_review: "amber", revisions: "amber",
   past_due: "red", failed: "red", overdue: "red", lost: "red", urgent: "red", unqualified: "red", at_risk: "red",
-  open: "indigo", new: "indigo", todo: "indigo", high: "amber", medium: "neutral", low: "neutral",
-  building: "indigo", ready_to_launch: "indigo", ready_to_build: "neutral",
+  open: "blue", new: "blue", todo: "blue", high: "amber", medium: "neutral", low: "neutral",
+  building: "blue", ready_to_launch: "blue", ready_to_build: "neutral",
   draft: "neutral", paused: "neutral", canceled: "neutral", archived: "neutral", closed: "neutral", void: "neutral", voided: "neutral", refunded: "neutral",
 };
 

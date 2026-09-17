@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type FormValues = z.input<typeof projectSchema>;
-const COLORS = ["#4F46E5", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#15803D"];
+const COLORS = ["#71717a", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#15803D"];
 
 export function ProjectFormDialog({
   open, onOpenChange, members, clients, project,

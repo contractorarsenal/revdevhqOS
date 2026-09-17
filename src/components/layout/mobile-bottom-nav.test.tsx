@@ -17,7 +17,7 @@ describe("MobileBottomNav", () => {
     const items = nav.querySelectorAll(":scope > a, :scope > button");
     expect(items).toHaveLength(5);
     expect(Array.from(items).map((el) => el.textContent)).toEqual([
-      "Dashboard", "Leads", "Clients", "Calendar", "More",
+      "Dashboard", "Needs Jay", "Leads", "Clients", "More",
     ]);
   });
 

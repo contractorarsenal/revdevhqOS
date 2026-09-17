@@ -139,7 +139,7 @@ export function TasksView({
     const noDate = open.filter((t) => !t.dueDate);
     return [
       { key: "overdue", label: "Overdue", tone: "text-red-700 dark:text-red-400", tasks: overdue },
-      { key: "today", label: "Today", tone: "text-indigo-700 dark:text-indigo-300", tasks: todayG },
+      { key: "today", label: "Today", tone: "text-blue-700 dark:text-blue-300", tasks: todayG },
       { key: "upcoming", label: "Upcoming", tone: "", tasks: upcoming },
       { key: "nodate", label: "No due date", tone: "", tasks: noDate },
       { key: "done", label: "Completed", tone: "text-emerald-700 dark:text-emerald-400", tasks: done.slice(0, 15) },

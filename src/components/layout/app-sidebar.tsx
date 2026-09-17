@@ -13,7 +13,7 @@ function NavPending() {
   return <span className="ml-auto size-1.5 animate-pulse rounded-full bg-primary" aria-label="Loading" />;
 }
 
-function NavItem({ href, label, icon: Icon }: (typeof PRIMARY)[number]) {
+function NavItem({ href, label, icon: Icon, badge }: (typeof PRIMARY)[number] & { badge?: boolean }) {
   const pathname = usePathname();
   const active = pathname === href || pathname.startsWith(href + "/");
   return (
@@ -27,6 +27,7 @@ function NavItem({ href, label, icon: Icon }: (typeof PRIMARY)[number]) {
     >
       <Icon className={cn("size-4", active && "text-primary")} />
       {label}
+      {badge && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-primary" aria-label="Pending items" />}
       <NavPending />
     </Link>
   );
@@ -37,22 +38,22 @@ export function AppSidebar(props: {
   userName: string;
   userEmail: string;
   role: string;
+  pendingApprovals?: number;
 }) {
   return (
     <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-sidebar-border bg-sidebar px-2.5 py-4 lg:flex">
       <div className="mb-3 flex items-center gap-2 px-2">
-        <div className="flex size-[22px] items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">r</div>
+        <div className="flex size-[22px] items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">CA</div>
         <span className="text-[13.5px] font-semibold tracking-tight">
-          revdevhq<span className="font-medium text-muted-foreground">OS</span>
+          CA<span className="font-medium text-muted-foreground"> Command Center</span>
         </span>
       </div>
       <div className="mb-3 rounded-lg border border-border bg-card px-2.5 py-2 shadow-sm">
         <p className="truncate text-[12.5px] font-semibold">{props.workspaceName}</p>
-        <p className="text-[11px] text-muted-foreground">Marketing Agency</p>
       </div>
       <nav className="flex flex-col gap-0.5">
         {PRIMARY.map((item) => (
-          <NavItem key={item.href} {...item} />
+          <NavItem key={item.href} {...item} badge={item.href === "/approvals" && (props.pendingApprovals ?? 0) > 0} />
         ))}
       </nav>
       <p className="px-2.5 pb-1 pt-4 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground/70">

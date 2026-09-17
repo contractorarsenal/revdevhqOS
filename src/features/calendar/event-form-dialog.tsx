@@ -17,7 +17,7 @@ import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
 import { Trash2 } from "lucide-react";
 
 type FormValues = z.input<typeof calendarEventSchema>;
-const COLORS = ["#4F46E5", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#15803D"];
+const COLORS = ["#71717a", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#15803D"];
 
 export type EventDefaults = {
   id?: string; title?: string; eventType?: string; clientId?: string | null; date?: string;

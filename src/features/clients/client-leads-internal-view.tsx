@@ -27,7 +27,7 @@ export function ClientLeadsInternalView({ client, leads }: { client: { id: strin
       <Link href={`/clients/${client.id}`} className="mb-3 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
         <ChevronLeft className="size-3.5" /> {client.name}
       </Link>
-      <PageHeader title={`Leads for ${client.name}`} description="Leads generated for this client's own website or ads — managed by the client through their portal.">
+      <PageHeader title={`Client Leads — ${client.name}`} description="Leads generated for this client's own website or ads — managed by the client through their portal. Separate from Contractor Arsenal's own sales Leads.">
         <Button size="sm" className="gap-1.5" onClick={() => setFormOpen(true)}>
           <Plus className="size-3.5" /> Add Client Lead
         </Button>
@@ -36,7 +36,7 @@ export function ClientLeadsInternalView({ client, leads }: { client: { id: strin
       {leads.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No leads yet"
+          title="No client leads yet"
           description="Add one manually, or leads generated for this client will appear here automatically."
           action={<Button size="sm" onClick={() => setFormOpen(true)}><Plus className="size-3.5" /> Add Client Lead</Button>}
         />

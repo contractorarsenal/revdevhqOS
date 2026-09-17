@@ -130,7 +130,7 @@ export function PortalOverview({
       </section>
 
       <section>
-        <h2 className="mb-2 text-[12.5px] font-semibold">What&apos;s next in your Command Center</h2>
+        <h2 className="mb-2 text-[12.5px] font-semibold">Coming to your portal</h2>
         <div className="grid gap-2 sm:grid-cols-2">
           {futureModules.map((m) => (
             <div key={m.label} className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-card/60 px-3.5 py-3">

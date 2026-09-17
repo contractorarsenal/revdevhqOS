@@ -39,7 +39,7 @@ export function ProjectDetailView({
       </Link>
       <div className="mb-4 rounded-lg border border-border bg-card p-4 shadow-sm">
         <div className="flex items-start gap-3">
-          <span className="mt-1.5 size-3 shrink-0 rounded-full" style={{ backgroundColor: project.color ?? "#4F46E5" }} />
+          <span className="mt-1.5 size-3 shrink-0 rounded-full" style={{ backgroundColor: project.color ?? "#71717a" }} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-base font-semibold">{project.name}</h1>

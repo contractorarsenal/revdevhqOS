@@ -1,10 +1,12 @@
 import { requireWorkspace } from "@/lib/auth/session";
+import { countPendingApprovals } from "@/server/queries/approvals";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireWorkspace();
+  const pendingApprovals = await countPendingApprovals(ctx.workspace.id);
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AppSidebar
@@ -12,6 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         userName={ctx.user.name}
         userEmail={ctx.user.email}
         role={ctx.role}
+        pendingApprovals={pendingApprovals}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <AppTopbar workspaceName={ctx.workspace.name} userName={ctx.user.name} role={ctx.role} />
@@ -22,7 +25,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {children}
         </main>
       </div>
-      <MobileBottomNav />
+      <MobileBottomNav pendingApprovals={pendingApprovals} />
     </div>
   );
 }

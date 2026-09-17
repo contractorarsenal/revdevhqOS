@@ -104,13 +104,13 @@ export function LeadsView({
     <div>
       <PageHeader
         title="Leads"
-        description="Track potential clients, communication, and upcoming follow-ups."
+        description="Contractor Arsenal's own sales prospects — separate from Client Leads (a client's website/ad leads, tracked under that client's page)."
       >
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setClientLeadFormOpen(true)}>
-          <Plus className="size-3.5" /> Add Client Lead
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setClientLeadFormOpen(true)} title="Logs a lead under a specific client — not added to the sales list below">
+          <Plus className="size-3.5" /> Log a client lead
         </Button>
         <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
-          <Plus className="size-3.5" /> Add Lead
+          <Plus className="size-3.5" /> Add lead
         </Button>
       </PageHeader>
 

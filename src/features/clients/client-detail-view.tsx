@@ -179,7 +179,7 @@ export function ClientDetailView({
                       </p>
                       <p className="text-[11.5px] text-muted-foreground">{[c.email, c.phone].filter(Boolean).join(" · ") || "—"}</p>
                     </div>
-                    {c.isPrimary && <StatusBadge status="primary" tone="indigo" />}
+                    {c.isPrimary && <StatusBadge status="primary" tone="blue" />}
                   </div>
                 ))
               )}

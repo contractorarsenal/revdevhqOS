@@ -41,13 +41,13 @@ function EventBlock({ ev, onClick, style }: { ev: Ev; onClick: () => void; style
   return (
     <button
       onClick={onClick}
-      style={{ backgroundColor: (ev.color ?? "#4F46E5") + "22", borderColor: ev.color ?? "#4F46E5", ...style }}
+      style={{ backgroundColor: (ev.color ?? "#71717a") + "22", borderColor: ev.color ?? "#71717a", ...style }}
       className={cn(
         "absolute left-0.5 right-0.5 overflow-hidden rounded-md border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm hover:brightness-95",
         (ev.status === "cancelled" || ev.status === "canceled") && "opacity-50 line-through"
       )}
     >
-      <p className="truncate font-semibold" style={{ color: ev.color ?? "#4F46E5" }}>
+      <p className="truncate font-semibold" style={{ color: ev.color ?? "#71717a" }}>
         {ev.kind === "task" && "✓ "}{ev.title}
       </p>
       {ev.clientName && <p className="truncate text-muted-foreground">{ev.clientName}</p>}
@@ -177,7 +177,7 @@ export function CalendarView({
                 <div className="mt-1 space-y-0.5">
                   {dayEvents.slice(0, 3).map((ev) => (
                     <div key={`${ev.kind}-${ev.id}`} onClick={(e) => { e.stopPropagation(); openItem(ev); }}
-                      className="truncate rounded px-1 text-[10px] font-medium" style={{ backgroundColor: (ev.color ?? "#4F46E5") + "22", color: ev.color ?? "#4F46E5" }}>
+                      className="truncate rounded px-1 text-[10px] font-medium" style={{ backgroundColor: (ev.color ?? "#71717a") + "22", color: ev.color ?? "#71717a" }}>
                       {ev.kind === "task" && "✓ "}{ev.title}
                     </div>
                   ))}

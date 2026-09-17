@@ -7,7 +7,7 @@
  *   ADMIN_EMAIL     defaults to jay@revdevhq.com
  *   ADMIN_NAME      defaults to "Jay"
  *   ADMIN_PASSWORD  used only when the auth user does not exist yet
- *   WORKSPACE_NAME  defaults to "RevDevHQ"
+ *   WORKSPACE_NAME  defaults to "Contractor Arsenal"
  *
  * Requires: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auth user)
  *           DATABASE_URL (profile/workspace rows)
@@ -24,7 +24,7 @@ import * as schema from "../src/lib/db/schema";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "jay@revdevhq.com").toLowerCase();
 const ADMIN_NAME = process.env.ADMIN_NAME ?? "Jay";
-const WORKSPACE_NAME = process.env.WORKSPACE_NAME ?? "RevDevHQ";
+const WORKSPACE_NAME = process.env.WORKSPACE_NAME ?? "Contractor Arsenal";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -299,7 +299,7 @@ export function SettingsView({
                     {WORKSPACE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 ) : (
-                  <StatusBadge status={m.role} tone={m.role === "owner" ? "indigo" : "neutral"} />
+                  <StatusBadge status={m.role} tone={m.role === "owner" ? "blue" : "neutral"} />
                 )}
                 {isOwner && m.userId !== account.userId && (
                   <Button
@@ -382,7 +382,7 @@ export function SettingsView({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Invite team member</DialogTitle>
-            <DialogDescription>They receive a Supabase sign-in invite by email and set their own password.</DialogDescription>
+            <DialogDescription>They receive an email invite and set their own password.</DialogDescription>
           </DialogHeader>
           <form onSubmit={submitInvite} className="space-y-3">
             <div className="space-y-1">

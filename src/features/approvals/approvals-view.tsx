@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Gavel, Plus } from "lucide-react";
@@ -100,7 +101,7 @@ export function ApprovalsView({ items, role }: { items: ApprovalRow[]; role: Wor
         <div className="space-y-3">
           {pendingItems.map((item) => (
             <div key={item.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-              <div className="flex flex-wrap items-start gap-2">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[13.5px] font-semibold">{item.title}</p>
@@ -108,11 +109,16 @@ export function ApprovalsView({ items, role }: { items: ApprovalRow[]; role: Wor
                   </div>
                   <p className="mt-0.5 text-[11.5px] text-muted-foreground">
                     Requested by {item.requestedByName ?? "someone"} · {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
-                    {item.clientName && ` · ${item.clientName}`}
-                    {item.projectName && ` · ${item.projectName}`}
-                    {item.leadCompany && ` · ${item.leadCompany}`}
                   </p>
                 </div>
+                {(item.clientId || item.projectId || item.leadId) && (
+                  <Link
+                    href={item.clientId ? `/clients/${item.clientId}` : item.projectId ? `/projects/${item.projectId}` : "/leads"}
+                    className="max-w-[40%] shrink-0 truncate text-[11.5px] font-semibold text-primary hover:underline"
+                  >
+                    Open {item.clientName ?? item.projectName ?? item.leadCompany}
+                  </Link>
+                )}
               </div>
               {item.description && <p className="mt-2 text-[12.5px]">{item.description}</p>}
               {item.riskSummary && (
