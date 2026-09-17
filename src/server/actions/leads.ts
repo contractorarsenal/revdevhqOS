@@ -33,7 +33,6 @@ function leadValues(data: ReturnType<typeof leadSchema.parse>) {
     estimatedValue: data.estimatedValue != null ? String(data.estimatedValue) : null,
     estimatedMrr: data.estimatedMrr != null ? String(data.estimatedMrr) : null,
     ownerId: data.ownerId ?? null,
-    clientId: data.clientId ?? null,
     nextFollowUpAt: data.nextFollowUpAt ? new Date(data.nextFollowUpAt) : null,
     notes: data.notes ?? null,
   };
@@ -44,7 +43,6 @@ export async function createLead(input: unknown): Promise<ActionResult<{ id: str
     const ctx = await authorize("member");
     const data = leadSchema.parse(input);
     await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
-    await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     const [row] = await db
       .insert(leads)
       .values({ workspaceId: ctx.workspace.id, ...leadValues(data), ownerId: data.ownerId ?? ctx.user.id })
@@ -68,7 +66,6 @@ export async function updateLead(leadId: string, input: unknown): Promise<Action
     await ownedLead(ctx.workspace.id, leadId);
     const data = leadSchema.parse(input);
     await assertWorkspaceMember(ctx.workspace.id, data.ownerId);
-    await assertWorkspaceClient(ctx.workspace.id, data.clientId);
     await db
       .update(leads)
       .set(leadValues(data))
@@ -145,11 +142,13 @@ export async function createManualClientLead(input: unknown): Promise<ActionResu
       actorId: ctx.user.id,
     });
 
-    revalidatePath("/leads");
     revalidatePath(`/clients/${data.clientId}`);
+    revalidatePath(`/clients/${data.clientId}/leads`);
     revalidatePath("/portal");
     revalidatePath("/portal/leads");
-    revalidateGoalPaths(); // new_leads goal metric counts creation time
+    // Deliberately no revalidateGoalPaths() here — new_leads is a sales
+    // (leads table) goal metric; client leads are a separate table/metric
+    // universe entirely (see the sales/client leads split).
     return { ok: true, data: { id } };
   } catch (err) {
     return actionError(err);

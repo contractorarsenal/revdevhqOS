@@ -58,11 +58,24 @@ beforeAll(async () => {
       workspace_id uuid NOT NULL,
       status text NOT NULL DEFAULT 'new',
       estimated_value numeric(12,2),
-      -- Columns the 0016 migration adds; the summary/metrics query now reads
-      -- received_at (not created_at), last_contacted_at (needs-response), and
-      -- closed_value (confirmed revenue). 0016 itself ALTERs the lead_status
-      -- enum, which this stub models as plain text, so its columns are stubbed
-      -- here rather than run via the enum-dependent migration.
+      -- Columns the 0016 migration adds; this stub exists purely to prove
+      -- 0013/0014 (below) apply their ALTERs to the real "leads" table
+      -- additively. Client-lead data itself lives in the client_leads stub
+      -- below (see the sales/client leads split, Slice 6) — clientLeadSummary
+      -- reads client_leads now, not leads.
+      closed_value numeric(12,2),
+      last_contacted_at timestamptz,
+      received_at timestamptz NOT NULL DEFAULT now(),
+      archived_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE client_leads (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id uuid NOT NULL,
+      client_id uuid NOT NULL,
+      name text NOT NULL DEFAULT 'Lead',
+      status text NOT NULL DEFAULT 'new',
+      estimated_value numeric(12,2),
       closed_value numeric(12,2),
       last_contacted_at timestamptz,
       received_at timestamptz NOT NULL DEFAULT now(),
@@ -189,17 +202,16 @@ describe("client lead summary runs the production query builders", () => {
 
   it("counts are client-scoped, archived leads excluded, revenue split by status", async () => {
     await client.exec(`
-      INSERT INTO leads (workspace_id, client_id, status, estimated_value, closed_value, received_at, archived_at) VALUES
+      INSERT INTO client_leads (workspace_id, client_id, status, estimated_value, closed_value, received_at, archived_at) VALUES
         ('${WS1}', '${CLIENT_A}', 'new',       500,  NULL, '2026-07-14T18:00:00Z', NULL),
         ('${WS1}', '${CLIENT_A}', 'contacted', 300,  NULL, '2026-07-02T18:00:00Z', NULL),
         ('${WS1}', '${CLIENT_A}', 'won',       1500, 1800, '2026-06-10T18:00:00Z', NULL),
         ('${WS1}', '${CLIENT_A}', 'lost',      NULL, NULL, '2026-06-05T18:00:00Z', NULL),
         ('${WS1}', '${CLIENT_A}', 'new',       999,  NULL, '2026-07-14T19:00:00Z', '2026-07-14T20:00:00Z'),
-        ('${WS1}', '${CLIENT_B}', 'new',       NULL, NULL, '2026-07-14T18:00:00Z', NULL),
-        ('${WS1}', NULL,          'new',       NULL, NULL, '2026-07-14T18:00:00Z', NULL);
+        ('${WS1}', '${CLIENT_B}', 'new',       NULL, NULL, '2026-07-14T18:00:00Z', NULL);
     `);
     const a = await clientLeadSummary(db, WS1, CLIENT_A, TZ, TODAY);
-    expect(a.total).toBe(4); // archived excluded, other client/unlinked excluded
+    expect(a.total).toBe(4); // archived excluded, other client excluded
     expect(a.thisWeek).toBe(1);
     expect(a.thisMonth).toBe(2);
     expect(a.newCount).toBe(1);

@@ -19,12 +19,11 @@ type FormValues = z.input<typeof leadSchema>;
 const SOURCES = ["Referral", "Google Ads", "Website form", "Facebook", "Cold outreach", "Networking event", "Directory", "Other"];
 
 export function LeadFormDialog({
-  open, onOpenChange, members, clients = [], lead,
+  open, onOpenChange, members, lead,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   members: { userId: string; name: string }[];
-  clients?: { id: string; name: string }[];
   lead?: (Partial<FormValues> & { id: string; nextFollowUpValue?: string | null }) | null;
 }) {
   const router = useRouter();
@@ -47,7 +46,6 @@ export function LeadFormDialog({
         estimatedValue: (lead?.estimatedValue as FormValues["estimatedValue"]) ?? "",
         estimatedMrr: (lead?.estimatedMrr as FormValues["estimatedMrr"]) ?? "",
         ownerId: lead?.ownerId ?? "",
-        clientId: lead?.clientId ?? "",
         nextFollowUpAt: lead?.nextFollowUpValue ?? "",
         notes: lead?.notes ?? "",
       });
@@ -102,13 +100,6 @@ export function LeadFormDialog({
             </select>
           </div>
           <div className="space-y-1"><Label>Service interest</Label><Input {...form.register("serviceInterest")} placeholder="Google Ads, SEO" /></div>
-          <div className="space-y-1">
-            <Label>For client <span className="font-normal text-muted-foreground">(lead generated for)</span></Label>
-            <select {...form.register("clientId")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
-              <option value="">None — agency prospect</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
           <div className="space-y-1">
             <Label>Estimated MRR (USD)</Label>
             <Input type="number" step="0.01" min="0" {...form.register("estimatedMrr")} />

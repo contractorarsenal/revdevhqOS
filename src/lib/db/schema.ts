@@ -150,6 +150,48 @@ export const leads = pgTable("leads", {
   index("leads_workspace_client_idx").on(t.workspaceId, t.clientId),
 ]);
 
+/**
+ * Leads generated FOR a Contractor Arsenal client (their own website/ad
+ * traffic) — structurally separate from `leads` (our own sales prospects).
+ * clientId is required, never optional, so a client lead can never lose its
+ * client association through an edit (the historical bug this table exists
+ * to make impossible). See client_lead_status for the 5-value workflow;
+ * `leads.lead_status` keeps 2 extra values (estimate_scheduled, won) used
+ * only by legacy pre-split rows left in place there.
+ */
+export const clientLeadStatus = pgEnum("client_lead_status", ["new", "contacted", "estimate_scheduled", "won", "lost"]);
+
+export const clientLeads = pgTable("client_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  source: text("source"),
+  status: clientLeadStatus("status").notNull().default("new"),
+  requestedService: text("requested_service"),
+  estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
+  closedValue: numeric("closed_value", { precision: 12, scale: 2 }),
+  ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
+  estimateScheduledAt: timestamp("estimate_scheduled_at", { withTimezone: true }),
+  wonAt: timestamp("won_at", { withTimezone: true }),
+  lostAt: timestamp("lost_at", { withTimezone: true }),
+  // Client-visible.
+  notes: text("notes"),
+  // Staff-only. Never selected by any client-portal-scoped query.
+  internalNotes: text("internal_notes"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("client_leads_workspace_client_idx").on(t.workspaceId, t.clientId),
+  index("client_leads_workspace_status_idx").on(t.workspaceId, t.status),
+  index("client_leads_workspace_received_idx").on(t.workspaceId, t.receivedAt),
+]);
+
 export const pipelineStages = pgTable("pipeline_stages", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),

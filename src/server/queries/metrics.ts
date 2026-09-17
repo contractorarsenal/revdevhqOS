@@ -3,7 +3,7 @@ import { and, eq, gte, isNull, lt, or, sql, inArray, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   subscriptions, invoices, payments, clients, opportunities, pipelineStages, tasks,
-  activityLogs, profiles, leads, projects,
+  activityLogs, profiles, leads, clientLeads, projects,
 } from "@/lib/db/schema";
 import {
   calculateMrr, calculateArr, outstandingRevenue, pastDueRevenue,
@@ -234,12 +234,13 @@ export async function getAttentionQueue(workspaceId: string) {
 }
 
 /**
- * Operational counts for the dashboard's top metric row. "Open leads" and
- * "client leads today" deliberately split on leads.clientId — agency sales
- * prospects vs. leads generated FOR a client are two different funnels
- * (see the client_leads split planned for a future migration). "Waiting on
- * client" uses the existing task_status "waiting" value — the one signal
- * already in the schema for "blocked on an external party".
+ * Operational counts for the dashboard's top metric row. "Open leads" reads
+ * the `leads` table (Contractor Arsenal sales prospects only — client_id is
+ * always null there now) and "client leads today" reads the separate
+ * `client_leads` table — two physically distinct funnels that must never be
+ * blended into one total. "Waiting on client" uses the existing task_status
+ * "waiting" value — the one signal already in the schema for "blocked on an
+ * external party".
  */
 export async function getOperationalMetrics(workspaceId: string, timezone: string) {
   const { dayStart } = zonedBoundaries(timezone);
@@ -263,12 +264,11 @@ export async function getOperationalMetrics(workspaceId: string, timezone: strin
       .where(and(eq(tasks.workspaceId, workspaceId), eq(tasks.status, "waiting"))),
     db
       .select({ n: sql<string>`count(*)` })
-      .from(leads)
+      .from(clientLeads)
       .where(and(
-        eq(leads.workspaceId, workspaceId),
-        sql`${leads.clientId} is not null`,
-        gte(leads.receivedAt, dayStart),
-        lt(leads.receivedAt, dayEnd)
+        eq(clientLeads.workspaceId, workspaceId),
+        gte(clientLeads.receivedAt, dayStart),
+        lt(clientLeads.receivedAt, dayEnd)
       )),
   ]);
 

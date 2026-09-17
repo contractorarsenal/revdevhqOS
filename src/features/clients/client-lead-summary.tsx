@@ -10,7 +10,7 @@ export function ClientLeadSummaryCard({ summary, clientName, clientId }: { summa
     <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
       <header className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
         <h2 className="text-[12.5px] font-semibold">Leads Performance</h2>
-        <Link href={`/leads?client=${clientId}`} className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
+        <Link href={`/clients/${clientId}/leads`} className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
           View All Client Leads <ArrowRight className="size-3" />
         </Link>
       </header>

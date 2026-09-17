@@ -98,16 +98,3 @@ export function clientLeadStatusTimestamp(
   }
 }
 
-/** Maps a client-facing status onto the legacy 6-value internal editable
- * set, for the one place a staff member might open a client-generated lead
- * in the internal (agency-prospect-oriented) edit form: "estimate_scheduled"
- * reads as "contacted" (an active conversation), "won" as "qualified"
- * (further along than open, since "converted" specifically means "became a
- * Contractor Arsenal client", which a client-generated lead never is). This
- * is presentation-only — it never writes back estimate_scheduled_at/won_at
- * and does not change the stored status. */
-export function toInternalEditableStatus(status: string): "new" | "contacted" | "qualified" | "unqualified" | "converted" | "lost" {
-  if (status === "estimate_scheduled") return "contacted";
-  if (status === "won") return "qualified";
-  return status as "new" | "contacted" | "qualified" | "unqualified" | "converted" | "lost";
-}

@@ -79,7 +79,6 @@ export const contactSchema = z.object({
 
 export const leadSchema = z.object({
   company: z.string().trim().min(1, "Company is required").max(200),
-  clientId: uuidOrNull,
   contactName: optionalTrimmed,
   email: optionalTrimmed,
   phone: optionalTrimmed,

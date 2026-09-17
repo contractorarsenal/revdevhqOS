@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
-import { leads, profiles, clientPortalMemberships } from "@/lib/db/schema";
+import { clientLeads, profiles, clientPortalMemberships } from "@/lib/db/schema";
 import { weekPeriodContaining, monthPeriod, addDaysStr } from "@/lib/goals";
 import { zonedTimeToUtc } from "@/lib/date-tz";
 import type { ClientLeadStatus } from "@/lib/leads-client";
@@ -12,25 +12,25 @@ type Db = PgDatabase<any, any, any>;
 /* ========== list / detail ========== */
 
 const CLIENT_LEAD_COLUMNS = {
-  id: leads.id,
-  name: leads.contactName,
-  email: leads.email,
-  phone: leads.phone,
-  requestedService: leads.serviceInterest,
-  source: leads.source,
-  status: leads.status,
-  receivedAt: leads.receivedAt,
-  contactedAt: leads.lastContactedAt,
-  estimateScheduledAt: leads.estimateScheduledAt,
-  wonAt: leads.wonAt,
-  lostAt: leads.lostAt,
-  estimatedValue: leads.estimatedValue,
-  closedValue: leads.closedValue,
-  assignedToId: leads.ownerId,
+  id: clientLeads.id,
+  name: clientLeads.name,
+  email: clientLeads.email,
+  phone: clientLeads.phone,
+  requestedService: clientLeads.requestedService,
+  source: clientLeads.source,
+  status: clientLeads.status,
+  receivedAt: clientLeads.receivedAt,
+  contactedAt: clientLeads.lastContactedAt,
+  estimateScheduledAt: clientLeads.estimateScheduledAt,
+  wonAt: clientLeads.wonAt,
+  lostAt: clientLeads.lostAt,
+  estimatedValue: clientLeads.estimatedValue,
+  closedValue: clientLeads.closedValue,
+  assignedToId: clientLeads.ownerId,
   assignedToName: profiles.name,
-  notes: leads.notes,
-  createdAt: leads.createdAt,
-  updatedAt: leads.updatedAt,
+  notes: clientLeads.notes,
+  createdAt: clientLeads.createdAt,
+  updatedAt: clientLeads.updatedAt,
 } as const;
 
 export type ClientLeadRow = Awaited<ReturnType<typeof listClientLeads>>[number];
@@ -45,34 +45,34 @@ export type ClientLeadFilters = {
 
 /** Every lead FOR this client, scoped by (workspaceId, clientId) together —
  * never one alone — and excluding archived leads. This is the single
- * client-scoped list query the portal and (via a clientId filter) the
- * internal Leads page both read from. */
+ * client-scoped list query the portal and the internal client-leads page
+ * both read from. */
 export async function listClientLeads(db: Db, workspaceId: string, clientId: string, filters: ClientLeadFilters = {}) {
-  const conditions = [eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId), isNull(leads.archivedAt)];
-  if (filters.status) conditions.push(eq(leads.status, filters.status));
-  if (filters.source) conditions.push(eq(leads.source, filters.source));
-  if (filters.assignedTo === "unassigned") conditions.push(isNull(leads.ownerId));
-  else if (filters.assignedTo) conditions.push(eq(leads.ownerId, filters.assignedTo));
+  const conditions = [eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId), isNull(clientLeads.archivedAt)];
+  if (filters.status) conditions.push(eq(clientLeads.status, filters.status));
+  if (filters.source) conditions.push(eq(clientLeads.source, filters.source));
+  if (filters.assignedTo === "unassigned") conditions.push(isNull(clientLeads.ownerId));
+  else if (filters.assignedTo) conditions.push(eq(clientLeads.ownerId, filters.assignedTo));
   if (filters.search) {
     const term = `%${filters.search.trim().toLowerCase()}%`;
     conditions.push(
       or(
-        sql`lower(coalesce(${leads.contactName}, '')) like ${term}`,
-        sql`lower(coalesce(${leads.email}, '')) like ${term}`,
-        sql`coalesce(${leads.phone}, '') like ${term}`
+        sql`lower(coalesce(${clientLeads.name}, '')) like ${term}`,
+        sql`lower(coalesce(${clientLeads.email}, '')) like ${term}`,
+        sql`coalesce(${clientLeads.phone}, '') like ${term}`
       )!
     );
   }
 
   const orderBy =
-    filters.sort === "oldest" ? asc(leads.receivedAt)
-    : filters.sort === "highest_value" ? desc(sql`coalesce(${leads.estimatedValue}, 0)`)
-    : desc(leads.receivedAt);
+    filters.sort === "oldest" ? asc(clientLeads.receivedAt)
+    : filters.sort === "highest_value" ? desc(sql`coalesce(${clientLeads.estimatedValue}, 0)`)
+    : desc(clientLeads.receivedAt);
 
   return db
     .select(CLIENT_LEAD_COLUMNS)
-    .from(leads)
-    .leftJoin(profiles, eq(leads.ownerId, profiles.id))
+    .from(clientLeads)
+    .leftJoin(profiles, eq(clientLeads.ownerId, profiles.id))
     .where(and(...conditions))
     .orderBy(orderBy);
 }
@@ -83,9 +83,9 @@ export async function listClientLeads(db: Db, workspaceId: string, clientId: str
 export async function getClientLead(db: Db, workspaceId: string, clientId: string, leadId: string) {
   const [row] = await db
     .select(CLIENT_LEAD_COLUMNS)
-    .from(leads)
-    .leftJoin(profiles, eq(leads.ownerId, profiles.id))
-    .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId), isNull(leads.archivedAt)))
+    .from(clientLeads)
+    .leftJoin(profiles, eq(clientLeads.ownerId, profiles.id))
+    .where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId), isNull(clientLeads.archivedAt)))
     .limit(1);
   return row ?? null;
 }
@@ -94,10 +94,10 @@ export async function getClientLead(db: Db, workspaceId: string, clientId: strin
  * internalNotes — never call this for a portal-facing response. */
 export async function getClientLeadInternal(db: Db, workspaceId: string, clientId: string, leadId: string) {
   const [row] = await db
-    .select({ ...CLIENT_LEAD_COLUMNS, internalNotes: leads.internalNotes })
-    .from(leads)
-    .leftJoin(profiles, eq(leads.ownerId, profiles.id))
-    .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId), isNull(leads.archivedAt)))
+    .select({ ...CLIENT_LEAD_COLUMNS, internalNotes: clientLeads.internalNotes })
+    .from(clientLeads)
+    .leftJoin(profiles, eq(clientLeads.ownerId, profiles.id))
+    .where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId), isNull(clientLeads.archivedAt)))
     .limit(1);
   return row ?? null;
 }
@@ -161,7 +161,7 @@ export async function getClientLeadMetrics(
   timezone: string,
   today: string
 ): Promise<ClientLeadMetrics> {
-  const scope = and(eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId), isNull(leads.archivedAt));
+  const scope = and(eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId), isNull(clientLeads.archivedAt));
 
   const week = weekPeriodContaining(today);
   const [y, m] = today.split("-").map(Number);
@@ -174,19 +174,19 @@ export async function getClientLeadMetrics(
   const [row] = await db
     .select({
       total: sql<string>`count(*)`,
-      thisWeek: sql<string>`count(*) FILTER (WHERE ${leads.receivedAt} >= ${weekStart} AND ${leads.receivedAt} < ${weekEnd})`,
-      thisMonth: sql<string>`count(*) FILTER (WHERE ${leads.receivedAt} >= ${monthStart} AND ${leads.receivedAt} < ${monthEnd})`,
-      newCount: sql<string>`count(*) FILTER (WHERE ${leads.status} = 'new')`,
-      needsResponse: sql<string>`count(*) FILTER (WHERE ${leads.status} = 'new' AND ${leads.lastContactedAt} IS NULL)`,
-      contacted: sql<string>`count(*) FILTER (WHERE ${leads.status} = 'contacted')`,
-      estimateScheduled: sql<string>`count(*) FILTER (WHERE ${leads.status} = 'estimate_scheduled')`,
-      won: sql<string>`count(*) FILTER (WHERE ${leads.status} = 'won')`,
-      lost: sql<string>`count(*) FILTER (WHERE ${leads.status} = 'lost')`,
-      estimatedPipelineValue: sql<string | null>`sum(${leads.estimatedValue}) FILTER (WHERE ${leads.status} IN ('new','contacted','estimate_scheduled'))`,
-      confirmedRevenue: sql<string | null>`sum(${leads.closedValue}) FILTER (WHERE ${leads.status} = 'won')`,
-      firstLeadAt: sql<string | null>`min(${leads.receivedAt})`,
+      thisWeek: sql<string>`count(*) FILTER (WHERE ${clientLeads.receivedAt} >= ${weekStart} AND ${clientLeads.receivedAt} < ${weekEnd})`,
+      thisMonth: sql<string>`count(*) FILTER (WHERE ${clientLeads.receivedAt} >= ${monthStart} AND ${clientLeads.receivedAt} < ${monthEnd})`,
+      newCount: sql<string>`count(*) FILTER (WHERE ${clientLeads.status} = 'new')`,
+      needsResponse: sql<string>`count(*) FILTER (WHERE ${clientLeads.status} = 'new' AND ${clientLeads.lastContactedAt} IS NULL)`,
+      contacted: sql<string>`count(*) FILTER (WHERE ${clientLeads.status} = 'contacted')`,
+      estimateScheduled: sql<string>`count(*) FILTER (WHERE ${clientLeads.status} = 'estimate_scheduled')`,
+      won: sql<string>`count(*) FILTER (WHERE ${clientLeads.status} = 'won')`,
+      lost: sql<string>`count(*) FILTER (WHERE ${clientLeads.status} = 'lost')`,
+      estimatedPipelineValue: sql<string | null>`sum(${clientLeads.estimatedValue}) FILTER (WHERE ${clientLeads.status} IN ('new','contacted','estimate_scheduled'))`,
+      confirmedRevenue: sql<string | null>`sum(${clientLeads.closedValue}) FILTER (WHERE ${clientLeads.status} = 'won')`,
+      firstLeadAt: sql<string | null>`min(${clientLeads.receivedAt})`,
     })
-    .from(leads)
+    .from(clientLeads)
     .where(scope);
 
   const totalLeads = Number(row?.total ?? 0);
@@ -232,10 +232,7 @@ export type ClientLeadSummary = {
 
 /** Thin adapter over getClientLeadMetrics for the existing internal
  * ClientLeadSummaryCard shape — kept so that card's status counting can
- * never drift from the authoritative metrics function (the previous
- * implementation independently mapped "won" to the legacy status
- * "converted", which never matches a client-generated lead's real "won"
- * status — fixed by delegating here instead of re-deriving). */
+ * never drift from the authoritative metrics function. */
 export async function clientLeadSummary(
   db: Db,
   workspaceId: string,

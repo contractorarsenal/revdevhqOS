@@ -40,6 +40,13 @@ beforeAll(async () => {
       status text NOT NULL DEFAULT 'new',
       received_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE client_leads (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id uuid NOT NULL,
+      client_id uuid NOT NULL,
+      name text NOT NULL DEFAULT 'Lead',
+      received_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE projects (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id uuid NOT NULL,
@@ -58,7 +65,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await client.exec(`DELETE FROM leads; DELETE FROM projects; DELETE FROM tasks;`);
+  await client.exec(`DELETE FROM leads; DELETE FROM client_leads; DELETE FROM projects; DELETE FROM tasks;`);
 });
 
 describe("getOperationalMetrics", () => {
@@ -110,13 +117,13 @@ describe("getOperationalMetrics", () => {
     expect(result.waitingOnClient).toBe(2);
   });
 
-  it("counts client-generated leads received today, excluding agency leads and other days", async () => {
+  it("counts client-generated leads received today from the separate client_leads table, excluding other days and other workspaces", async () => {
     await client.exec(`
-      INSERT INTO leads (workspace_id, client_id, status, received_at) VALUES
-        ('${WS1}', '${CLIENT1}', 'new', now()),
-        ('${WS1}', '${CLIENT1}', 'contacted', now() - interval '1 hour'),
-        ('${WS1}', '${CLIENT1}', 'new', now() - interval '2 days'),
-        ('${WS1}', NULL, 'new', now());
+      INSERT INTO client_leads (workspace_id, client_id, received_at) VALUES
+        ('${WS1}', '${CLIENT1}', now()),
+        ('${WS1}', '${CLIENT1}', now() - interval '1 hour'),
+        ('${WS1}', '${CLIENT1}', now() - interval '2 days'),
+        ('${WS2}', '${CLIENT1}', now());
     `);
     const result = await getOperationalMetrics(WS1, "America/Los_Angeles");
     expect(result.clientLeadsToday).toBe(2);

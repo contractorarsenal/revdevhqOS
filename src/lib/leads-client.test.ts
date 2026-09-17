@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLIENT_LEAD_STATUSES, CLIENT_LEAD_STATUS_LABEL, LEAD_SOURCES,
   isClientLeadStatus, isNeedsResponse, isOverdue24h,
-  telHref, smsHref, mailtoHref, clientLeadStatusTimestamp, toInternalEditableStatus,
+  telHref, smsHref, mailtoHref, clientLeadStatusTimestamp,
 } from "./leads-client";
 
 describe("client-facing lead status model", () => {
@@ -86,18 +86,5 @@ describe("status transition stamping", () => {
 
   it("stamps nothing for 'new' (the pre-contact state)", () => {
     expect(clientLeadStatusTimestamp("new", now)).toEqual({});
-  });
-});
-
-describe("internal editable status mapping (never breaks the internal workflow)", () => {
-  it("maps the two client-only statuses onto the legacy editable set", () => {
-    expect(toInternalEditableStatus("estimate_scheduled")).toBe("contacted");
-    expect(toInternalEditableStatus("won")).toBe("qualified");
-  });
-  it("passes shared statuses through unchanged", () => {
-    expect(toInternalEditableStatus("new")).toBe("new");
-    expect(toInternalEditableStatus("contacted")).toBe("contacted");
-    expect(toInternalEditableStatus("lost")).toBe("lost");
-    expect(toInternalEditableStatus("converted")).toBe("converted");
   });
 });

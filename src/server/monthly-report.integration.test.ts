@@ -70,7 +70,7 @@ beforeAll(async () => {
       frequency text NOT NULL DEFAULT 'one_time',
       status text NOT NULL DEFAULT 'active'
     );
-    CREATE TABLE leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, client_id uuid, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE tasks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, completed_at timestamptz);
     CREATE TABLE projects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, completed_at timestamptz);
     CREATE TABLE pipeline_stages (id uuid PRIMARY KEY, workspace_id uuid NOT NULL);
