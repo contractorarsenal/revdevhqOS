@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
+import { ArrowRight, CheckCircle2, TrendingUp, FileBarChart } from "lucide-react";
 import { PORTAL_ROLE_LABEL, type ClientPortalRole, type ClientPortalStatus } from "@/lib/portal";
 import { formatMoney } from "@/lib/finance/metrics";
 import type { ClientLeadMetrics } from "@/server/queries/client-leads";
@@ -21,7 +21,6 @@ export function PortalOverview({
   leadMetrics: ClientLeadMetrics;
 }) {
   const futureModules = [
-    { icon: LifeBuoy, label: "Support Requests", note: "Coming soon" },
     { icon: TrendingUp, label: "Google Rankings", note: "Coming soon" },
     { icon: FileBarChart, label: "Progress Reports", note: "Coming soon" },
   ];

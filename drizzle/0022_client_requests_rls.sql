@@ -1,0 +1,1 @@
+ALTER TABLE "client_requests" ENABLE ROW LEVEL SECURITY;

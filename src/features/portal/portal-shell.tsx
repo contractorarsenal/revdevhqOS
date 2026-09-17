@@ -6,6 +6,7 @@ import { PortalMobileNav } from "@/features/portal/portal-mobile-nav";
 const DESKTOP_NAV = [
   { href: "/portal", label: "Overview" },
   { href: "/portal/leads", label: "Leads" },
+  { href: "/portal/requests", label: "Requests" },
 ];
 
 /**

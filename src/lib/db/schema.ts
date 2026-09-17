@@ -585,6 +585,39 @@ export const clientPortalInvites = pgTable("client_portal_invites", {
   index("client_portal_invites_workspace_created_idx").on(t.workspaceId, t.createdAt),
 ]);
 
+/* ========== client requests ========== */
+export const clientRequestType = pgEnum("client_request_type", [
+  "photo_change", "phone_update", "content_revision", "new_page", "new_service",
+  "bug", "form_issue", "tracking_issue", "technical_problem", "support_request", "other",
+]);
+export const clientRequestStatus = pgEnum("client_request_status", [
+  "new", "triaged", "in_progress", "waiting", "complete", "client_notified",
+]);
+
+/**
+ * What a client asked for — distinct from `tasks`, which is the internal
+ * work required to execute it (see taskId, set once triaged). Submitted by
+ * either a portal client user or a staff member logging it on the client's
+ * behalf; submittedBy is a profiles row either way.
+ */
+export const clientRequests = pgTable("client_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  type: clientRequestType("type").notNull().default("other"),
+  status: clientRequestStatus("status").notNull().default("new"),
+  description: text("description").notNull(),
+  priority: taskPriority("priority").notNull().default("medium"),
+  submittedBy: uuid("submitted_by").references(() => profiles.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  resolutionNotes: text("resolution_notes"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("client_requests_workspace_status_idx").on(t.workspaceId, t.status),
+  index("client_requests_workspace_client_idx").on(t.workspaceId, t.clientId),
+]);
+
 /** A profile's access to one client's portal. One row per (client, profile);
  * status transitions instead of duplicate rows. */
 export const clientPortalMemberships = pgTable("client_portal_memberships", {

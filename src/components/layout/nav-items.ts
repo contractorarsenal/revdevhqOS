@@ -1,7 +1,7 @@
 import {
   LayoutGrid, Users, Target, Kanban, CreditCard, CheckSquare, BarChart3,
   Receipt, CalendarDays, FolderKanban, Goal, ClipboardList, Settings,
-  Menu, Gavel,
+  Menu, Gavel, MessageSquareText,
 } from "lucide-react";
 
 /** Internal sidebar order is intentional and covered by a unit test —
@@ -13,6 +13,7 @@ export const SIDEBAR_PRIMARY_NAV = [
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/leads", label: "Leads", icon: Target },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/client-requests", label: "Client requests", icon: MessageSquareText },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/expenses", label: "Expenses", icon: Receipt },
@@ -49,6 +50,7 @@ export const MORE_MENU_GROUPS: MoreMenuGroup[] = [
       { href: "/pipeline", label: "Pipeline", icon: Kanban },
       { href: "/leads", label: "Leads", icon: Target },
       { href: "/clients", label: "Clients", icon: Users },
+      { href: "/client-requests", label: "Client requests", icon: MessageSquareText },
     ],
   },
   {

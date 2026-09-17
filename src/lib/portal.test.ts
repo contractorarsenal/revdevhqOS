@@ -129,7 +129,7 @@ describe("industry theming", () => {
 describe("sidebar navigation order", () => {
   it("matches the requested order exactly", () => {
     expect(SIDEBAR_PRIMARY_NAV.map((i) => i.label)).toEqual([
-      "Dashboard", "Needs Jay", "Pipeline", "Leads", "Clients", "Calendar",
+      "Dashboard", "Needs Jay", "Pipeline", "Leads", "Clients", "Client requests", "Calendar",
       "Billing", "Expenses", "Reports", "Goals", "Tasks", "Projects",
     ]);
   });

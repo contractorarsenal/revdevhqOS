@@ -421,3 +421,33 @@ export const resolveApprovalSchema = z.object({
   status: z.enum(["approved", "declined", "resolved", "cancelled"]),
   resolutionNotes: optionalTrimmed,
 });
+
+/* ========== client requests ========== */
+export const CLIENT_REQUEST_TYPES = [
+  "photo_change", "phone_update", "content_revision", "new_page", "new_service",
+  "bug", "form_issue", "tracking_issue", "technical_problem", "support_request", "other",
+] as const;
+
+export const CLIENT_REQUEST_STATUSES = ["new", "triaged", "in_progress", "waiting", "complete", "client_notified"] as const;
+
+export const clientRequestSchema = z.object({
+  clientId: z.string().uuid("Select a client"),
+  type: z.enum(CLIENT_REQUEST_TYPES).default("other"),
+  description: z.string().trim().min(1, "Description is required").max(3000),
+  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+});
+
+/** Portal submission never accepts a clientId — it's derived from the
+ * caller's own portal session server-side (see authorizePortal). */
+export const portalClientRequestSchema = clientRequestSchema.omit({ clientId: true });
+
+export const updateClientRequestStatusSchema = z.object({
+  status: z.enum(CLIENT_REQUEST_STATUSES),
+  resolutionNotes: optionalTrimmed,
+});
+
+export const triageClientRequestSchema = z.object({
+  taskTitle: z.string().trim().min(1, "Task title is required").max(200),
+  assigneeId: uuidOrNull,
+  dueDate: optionalDate,
+});
