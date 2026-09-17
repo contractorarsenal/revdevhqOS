@@ -3,7 +3,7 @@ import { and, eq, gte, isNull, lt, or, sql, inArray, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   subscriptions, invoices, payments, clients, opportunities, pipelineStages, tasks,
-  activityLogs, profiles,
+  activityLogs, profiles, leads, projects,
 } from "@/lib/db/schema";
 import {
   calculateMrr, calculateArr, outstandingRevenue, pastDueRevenue,
@@ -231,4 +231,48 @@ export async function getAttentionQueue(workspaceId: string) {
       .limit(5),
   ]);
   return { overdueInvoices, renewals, overdueTasks };
+}
+
+/**
+ * Operational counts for the dashboard's top metric row. "Open leads" and
+ * "client leads today" deliberately split on leads.clientId — agency sales
+ * prospects vs. leads generated FOR a client are two different funnels
+ * (see the client_leads split planned for a future migration). "Waiting on
+ * client" uses the existing task_status "waiting" value — the one signal
+ * already in the schema for "blocked on an external party".
+ */
+export async function getOperationalMetrics(workspaceId: string, timezone: string) {
+  const { dayStart } = zonedBoundaries(timezone);
+  const dayEnd = new Date(dayStart.getTime() + 86400000);
+
+  const [openLeadsRow, activeProjectsRow, waitingRow, clientLeadsTodayRow] = await Promise.all([
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(leads)
+      .where(and(eq(leads.workspaceId, workspaceId), isNull(leads.clientId), inArray(leads.status, ["new", "contacted", "qualified"]))),
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(projects)
+      .where(and(eq(projects.workspaceId, workspaceId), inArray(projects.status, ["planning", "active"]))),
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, workspaceId), eq(tasks.status, "waiting"))),
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(leads)
+      .where(and(
+        eq(leads.workspaceId, workspaceId),
+        sql`${leads.clientId} is not null`,
+        gte(leads.receivedAt, dayStart),
+        lt(leads.receivedAt, dayEnd)
+      )),
+  ]);
+
+  return {
+    openLeads: Number(openLeadsRow[0]?.n ?? 0),
+    activeProjects: Number(activeProjectsRow[0]?.n ?? 0),
+    waitingOnClient: Number(waitingRow[0]?.n ?? 0),
+    clientLeadsToday: Number(clientLeadsTodayRow[0]?.n ?? 0),
+  };
 }

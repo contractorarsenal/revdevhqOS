@@ -2,12 +2,14 @@ import Link from "next/link";
 import { requireWorkspace } from "@/lib/auth/session";
 import { timed } from "@/lib/dev/timing";
 import {
-  getDashboardMetrics, getMrrTrend, getCollectedByMonth, getRecentActivity, getAttentionQueue,
+  getDashboardMetrics, getOperationalMetrics, getMrrTrend, getCollectedByMonth, getRecentActivity, getAttentionQueue,
 } from "@/server/queries/metrics";
-import { countPendingApprovals } from "@/server/queries/approvals";
+import { listApprovals } from "@/server/queries/approvals";
 import { listPayments } from "@/server/queries/billing";
 import { listDueSubscriptions } from "@/server/queries/recurring";
 import { listTodayFeed } from "@/server/queries/calendar";
+import { listTasks } from "@/server/queries/tasks";
+import { listProjects } from "@/server/queries/projects";
 import { getDashboardGoals } from "@/server/queries/goals";
 import { DashboardGoals } from "@/features/goals/dashboard-goals";
 import { todayInTimezone, dayBoundsInTimezone, formatTimeLabel } from "@/lib/date-tz";
@@ -19,8 +21,8 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { MrrTrendChart, CollectedChart } from "@/features/reports/charts";
 import { formatMoney, invoiceBalance } from "@/lib/finance/metrics";
-import { AlertTriangle, ArrowRight, DollarSign, Inbox } from "lucide-react";
-import { format } from "date-fns";
+import { AlertTriangle, ArrowRight, DollarSign, Inbox, Gavel, Clock } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 
 function greeting() {
   const h = new Date().getHours();
@@ -37,21 +39,30 @@ export default async function DashboardPage() {
   const wsId = ctx.workspace.id;
   const today = todayInTimezone(ctx.workspace.timezone);
   const { start: todayStart, end: todayEnd } = dayBoundsInTimezone(ctx.workspace.timezone, today);
-  const [metrics, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule, goals, needsJayCount] = await timed("dashboard queries", () => Promise.all([
-    getDashboardMetrics(wsId, ctx.workspace.timezone),
-    getMrrTrend(wsId),
-    getCollectedByMonth(wsId, ctx.workspace.timezone),
-    getRecentActivity(wsId),
-    getAttentionQueue(wsId),
-    listPayments(wsId),
-    listDueSubscriptions(wsId, ctx.workspace.timezone),
-    listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
-    getDashboardGoals(wsId, ctx.workspace.timezone),
-    countPendingApprovals(wsId),
-  ]));
+  const [metrics, operational, mrrTrend, collected, activity, attention, payments, dueSubs, todaySchedule, goals, approvals, tasksAll, projectsAll] =
+    await timed("dashboard queries", () => Promise.all([
+      getDashboardMetrics(wsId, ctx.workspace.timezone),
+      getOperationalMetrics(wsId, ctx.workspace.timezone),
+      getMrrTrend(wsId),
+      getCollectedByMonth(wsId, ctx.workspace.timezone),
+      getRecentActivity(wsId),
+      getAttentionQueue(wsId),
+      listPayments(wsId),
+      listDueSubscriptions(wsId, ctx.workspace.timezone),
+      listTodayFeed(wsId, todayStart, todayEnd, ctx.workspace.timezone),
+      getDashboardGoals(wsId, ctx.workspace.timezone),
+      listApprovals(wsId),
+      listTasks(wsId),
+      listProjects(wsId),
+    ]));
   const firstName = ctx.user.name.split(" ")[0];
   const hasAnyData = metrics.mrr > 0 || metrics.activeClients > 0 || payments.length > 0;
   const attentionCount = attention.overdueInvoices.length + attention.overdueTasks.length + attention.renewals.length;
+
+  const pendingApprovals = approvals.filter((a) => a.status === "pending");
+  const waitingTasks = tasksAll.filter((t) => t.status === "waiting").slice(0, 5);
+  const activeWorkProjects = projectsAll.filter((p) => p.status === "active" || p.status === "planning").slice(0, 4);
+  const activeWorkTasks = tasksAll.filter((t) => t.status === "in_progress").slice(0, 4);
 
   return (
     <div>
@@ -63,16 +74,131 @@ export default async function DashboardPage() {
       <MetricGrid>
         <Link href="/approvals" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
           <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Needs Jay</p>
-          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{needsJayCount}</p>
-          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{needsJayCount === 0 ? "all clear" : "pending decisions"}</p>
+          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{pendingApprovals.length}</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{pendingApprovals.length === 0 ? "all clear" : "pending decisions"}</p>
         </Link>
-        <MetricCard label="MRR" value={formatMoney(metrics.mrr)} hint="active subscriptions" />
-        <MetricCard label="ARR" value={formatMoney(metrics.arr)} hint="MRR × 12" />
-        <MetricCard label="Collected today" value={formatMoney(metrics.collectedToday)} hint={`month: ${formatMoney(metrics.collectedThisMonth)}`} />
+        <Link href="/leads" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
+          <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Open leads</p>
+          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{operational.openLeads}</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">agency prospects</p>
+        </Link>
         <MetricCard label="Active clients" value={metrics.activeClients} hint="incl. onboarding" />
-        <MetricCard label="Outstanding" value={formatMoney(metrics.outstanding)} hint="unpaid invoices" />
-        <MetricCard label="Past-due" value={formatMoney(metrics.pastDue)} hint="past the due date" />
+        <Link href="/projects" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
+          <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Active projects</p>
+          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{operational.activeProjects}</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">planning + active</p>
+        </Link>
+        <Link href="/tasks" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
+          <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Waiting on client</p>
+          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{operational.waitingOnClient}</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">tasks blocked</p>
+        </Link>
+        <Link href="/leads" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
+          <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Client leads today</p>
+          <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{operational.clientLeadsToday}</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">generated for clients</p>
+        </Link>
       </MetricGrid>
+
+      <div className="mb-4 grid gap-4 md:grid-cols-3">
+        <section className="rounded-lg border border-border bg-card shadow-sm">
+          <header className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
+            <Gavel className="size-3.5 text-muted-foreground" />
+            <h2 className="text-[12.5px] font-semibold">Needs Jay</h2>
+            <Link href="/approvals" className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline">
+              All <ArrowRight className="size-3" />
+            </Link>
+          </header>
+          {pendingApprovals.length === 0 ? (
+            <p className="px-4 py-4 text-xs text-muted-foreground">Nothing needs a decision right now.</p>
+          ) : (
+            <ul>
+              {pendingApprovals.slice(0, 4).map((a) => (
+                <li key={a.id} className="border-t border-border/40 first:border-t-0">
+                  <Link href="/approvals" className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium">{a.title}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {a.requestedByName ?? "Someone"} · {formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-border bg-card shadow-sm">
+          <header className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
+            <h2 className="text-[12.5px] font-semibold">Active work</h2>
+          </header>
+          {activeWorkProjects.length === 0 && activeWorkTasks.length === 0 ? (
+            <p className="px-4 py-4 text-xs text-muted-foreground">Nothing in motion right now.</p>
+          ) : (
+            <ul>
+              {activeWorkProjects.map((p) => (
+                <li key={`project-${p.id}`} className="border-t border-border/40 first:border-t-0">
+                  <Link href={`/projects/${p.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium">{p.name}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">{p.clientName ?? "Internal"} · project</p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+              {activeWorkTasks.map((t) => (
+                <li key={`task-${t.id}`} className="border-t border-border/40 first:border-t-0">
+                  <Link href={`/tasks?open=${t.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium">{t.title}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">{t.clientName ? `${t.clientName} · ` : ""}task</p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-border bg-card shadow-sm">
+          <header className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
+            <Clock className="size-3.5 text-muted-foreground" />
+            <h2 className="text-[12.5px] font-semibold">Waiting</h2>
+          </header>
+          {waitingTasks.length === 0 ? (
+            <p className="px-4 py-4 text-xs text-muted-foreground">Nothing waiting on a client right now.</p>
+          ) : (
+            <ul>
+              {waitingTasks.map((t) => (
+                <li key={t.id} className="border-t border-border/40 first:border-t-0">
+                  <Link href={`/tasks?open=${t.id}`} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/30">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium">{t.title}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">{t.clientName ? `${t.clientName} · ` : ""}waiting</p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <details className="mb-4 rounded-lg border border-border bg-card shadow-sm">
+        <summary className="cursor-pointer list-none px-4 py-2.5 text-[12.5px] font-semibold [&::-webkit-details-marker]:hidden">
+          Financial snapshot
+        </summary>
+        <div className="border-t border-border/60 px-4 py-3">
+          <MetricGrid>
+            <MetricCard label="MRR" value={formatMoney(metrics.mrr)} hint="active subscriptions" />
+            <MetricCard label="ARR" value={formatMoney(metrics.arr)} hint="MRR × 12" />
+            <MetricCard label="Collected today" value={formatMoney(metrics.collectedToday)} hint={`month: ${formatMoney(metrics.collectedThisMonth)}`} />
+            <MetricCard label="Outstanding" value={formatMoney(metrics.outstanding)} hint="unpaid invoices" />
+            <MetricCard label="Past-due" value={formatMoney(metrics.pastDue)} hint="past the due date" />
+          </MetricGrid>
+        </div>
+      </details>
 
       <DashboardGoals primary={goals.primary} others={goals.others} totalActive={goals.totalActive} />
 

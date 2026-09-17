@@ -1,0 +1,119 @@
+/**
+ * getOperationalMetrics() powers the dashboard's top operational row.
+ * Runs against an embedded PGlite database to prove the actual SQL filters
+ * — not just that the function was called — since the boundary conditions
+ * here (open vs. terminal lead status, agency vs. client-generated leads,
+ * "today" in the workspace timezone) are exactly what would silently drift
+ * wrong in a mocked test.
+ */
+import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/db", () => ({
+  db: new Proxy({}, {
+    get(_t, prop) {
+      const target = (globalThis as Record<string, unknown>).__testDb as Record<string, unknown>;
+      const value = target[prop as string];
+      return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+    },
+  }),
+}));
+
+import { getOperationalMetrics } from "@/server/queries/metrics";
+
+const WS1 = "11111111-1111-4111-8111-111111111111";
+const WS2 = "22222222-2222-4222-8222-222222222222";
+const CLIENT1 = "33333333-3333-4333-8333-333333333333";
+
+let client: PGlite;
+
+beforeAll(async () => {
+  client = new PGlite();
+  (globalThis as Record<string, unknown>).__testDb = drizzle(client);
+  await client.exec(`
+    CREATE TABLE leads (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id uuid NOT NULL,
+      client_id uuid,
+      status text NOT NULL DEFAULT 'new',
+      received_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE projects (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id uuid NOT NULL,
+      status text NOT NULL DEFAULT 'planning'
+    );
+    CREATE TABLE tasks (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id uuid NOT NULL,
+      status text NOT NULL DEFAULT 'todo'
+    );
+  `);
+});
+
+afterAll(async () => {
+  await client.close();
+});
+
+beforeEach(async () => {
+  await client.exec(`DELETE FROM leads; DELETE FROM projects; DELETE FROM tasks;`);
+});
+
+describe("getOperationalMetrics", () => {
+  it("counts open agency leads — excludes client-generated leads and terminal statuses", async () => {
+    await client.exec(`
+      INSERT INTO leads (workspace_id, client_id, status) VALUES
+        ('${WS1}', NULL, 'new'),
+        ('${WS1}', NULL, 'contacted'),
+        ('${WS1}', NULL, 'qualified'),
+        ('${WS1}', NULL, 'converted'),
+        ('${WS1}', NULL, 'lost'),
+        ('${WS1}', '${CLIENT1}', 'new'),
+        ('${WS2}', NULL, 'new');
+    `);
+    const result = await getOperationalMetrics(WS1, "America/Los_Angeles");
+    expect(result.openLeads).toBe(3);
+  });
+
+  it("counts active projects as planning + active only", async () => {
+    await client.exec(`
+      INSERT INTO projects (workspace_id, status) VALUES
+        ('${WS1}', 'planning'),
+        ('${WS1}', 'active'),
+        ('${WS1}', 'on_hold'),
+        ('${WS1}', 'completed'),
+        ('${WS1}', 'archived'),
+        ('${WS2}', 'active');
+    `);
+    const result = await getOperationalMetrics(WS1, "America/Los_Angeles");
+    expect(result.activeProjects).toBe(2);
+  });
+
+  it("counts tasks waiting on a client — the 'waiting' status only", async () => {
+    await client.exec(`
+      INSERT INTO tasks (workspace_id, status) VALUES
+        ('${WS1}', 'waiting'),
+        ('${WS1}', 'waiting'),
+        ('${WS1}', 'todo'),
+        ('${WS1}', 'in_progress'),
+        ('${WS1}', 'completed'),
+        ('${WS2}', 'waiting');
+    `);
+    const result = await getOperationalMetrics(WS1, "America/Los_Angeles");
+    expect(result.waitingOnClient).toBe(2);
+  });
+
+  it("counts client-generated leads received today, excluding agency leads and other days", async () => {
+    await client.exec(`
+      INSERT INTO leads (workspace_id, client_id, status, received_at) VALUES
+        ('${WS1}', '${CLIENT1}', 'new', now()),
+        ('${WS1}', '${CLIENT1}', 'contacted', now() - interval '1 hour'),
+        ('${WS1}', '${CLIENT1}', 'new', now() - interval '2 days'),
+        ('${WS1}', NULL, 'new', now());
+    `);
+    const result = await getOperationalMetrics(WS1, "America/Los_Angeles");
+    expect(result.clientLeadsToday).toBe(2);
+  });
+});
