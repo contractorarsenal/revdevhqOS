@@ -253,7 +253,10 @@ export async function getOperationalMetrics(workspaceId: string, timezone: strin
     db
       .select({ n: sql<string>`count(*)` })
       .from(projects)
-      .where(and(eq(projects.workspaceId, workspaceId), inArray(projects.status, ["planning", "active"]))),
+      .where(and(
+        eq(projects.workspaceId, workspaceId),
+        inArray(projects.status, ["ready_to_build", "building", "client_review", "revisions", "ready_to_launch"])
+      )),
     db
       .select({ n: sql<string>`count(*)` })
       .from(tasks)

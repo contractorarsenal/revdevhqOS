@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { formatDistanceToNow } from "date-fns";
 import { Plus, FolderKanban, Archive } from "lucide-react";
 import { archiveProject } from "@/server/actions/projects";
 import { PageHeader } from "@/components/shared/page-header";
@@ -17,7 +18,7 @@ import { ProjectFormDialog } from "./project-form-dialog";
 export function ProjectsView({ projects, members, clients }: { projects: any[]; members: any[]; clients: any[] }) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
-  const active = projects.filter((p) => p.status !== "archived");
+  const active = projects.filter((p) => p.status !== "closed");
 
   return (
     <div>
@@ -46,6 +47,13 @@ export function ProjectsView({ projects, members, clients }: { projects: any[]; 
                 <span>{p.completedCount}/{p.taskCount} tasks · {p.progress}%</span>
                 {p.dueDate && <span>Due {p.dueDate}</span>}
               </div>
+              {p.waitingOn && (
+                <p className="mt-1.5 truncate text-[11px] text-amber-700 dark:text-amber-400">Waiting: {p.waitingOn}</p>
+              )}
+              {p.nextAction && (
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground"><span className="font-medium text-foreground">Next: </span>{p.nextAction}</p>
+              )}
+              <p className="mt-1.5 text-[10.5px] text-muted-foreground">Updated {formatDistanceToNow(new Date(p.updatedAt), { addSuffix: true })}</p>
               <div className="mt-3 flex justify-end">
                 <ConfirmationDialog
                   trigger={<Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-muted-foreground"><Archive className="size-3.5" /> Archive</Button>}

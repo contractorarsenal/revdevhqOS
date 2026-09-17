@@ -43,7 +43,7 @@ beforeAll(async () => {
     CREATE TABLE projects (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id uuid NOT NULL,
-      status text NOT NULL DEFAULT 'planning'
+      status text NOT NULL DEFAULT 'ready_to_build'
     );
     CREATE TABLE tasks (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -77,18 +77,23 @@ describe("getOperationalMetrics", () => {
     expect(result.openLeads).toBe(3);
   });
 
-  it("counts active projects as planning + active only", async () => {
+  it("counts active projects as ready_to_build through ready_to_launch only", async () => {
     await client.exec(`
       INSERT INTO projects (workspace_id, status) VALUES
-        ('${WS1}', 'planning'),
-        ('${WS1}', 'active'),
-        ('${WS1}', 'on_hold'),
-        ('${WS1}', 'completed'),
-        ('${WS1}', 'archived'),
-        ('${WS2}', 'active');
+        ('${WS1}', 'ready_to_build'),
+        ('${WS1}', 'building'),
+        ('${WS1}', 'client_review'),
+        ('${WS1}', 'revisions'),
+        ('${WS1}', 'ready_to_launch'),
+        ('${WS1}', 'paused'),
+        ('${WS1}', 'live'),
+        ('${WS1}', 'closed'),
+        ('${WS1}', 'onboarding'),
+        ('${WS1}', 'at_risk'),
+        ('${WS2}', 'building');
     `);
     const result = await getOperationalMetrics(WS1, "America/Los_Angeles");
-    expect(result.activeProjects).toBe(2);
+    expect(result.activeProjects).toBe(5);
   });
 
   it("counts tasks waiting on a client — the 'waiting' status only", async () => {

@@ -237,14 +237,24 @@ export const taskSchema = z.object({
   allDay: z.coerce.boolean().default(false),
 });
 
+// The original 5 values ("planning", "active", "on_hold", "completed",
+// "archived") are retired — kept in the database enum (existing rows were
+// migrated off them) but no longer assignable through the app.
+export const PROJECT_STATUSES = [
+  "onboarding", "waiting_on_client", "ready_to_build", "building", "client_review",
+  "revisions", "ready_to_launch", "live", "paused", "at_risk", "closed",
+] as const;
+
 export const projectSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
   description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
-  status: z.enum(["planning", "active", "on_hold", "completed", "archived"]).default("planning"),
+  status: z.enum(PROJECT_STATUSES).default("ready_to_build"),
   ownerId: uuidOrNull,
   clientId: uuidOrNull,
   startDate: optionalDate,
   dueDate: optionalDate,
+  waitingOn: optionalTrimmed,
+  nextAction: optionalTrimmed,
   color: z
     .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
     .transform((v) => (v === "" ? null : v))

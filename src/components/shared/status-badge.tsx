@@ -11,11 +11,13 @@ const TONES = {
 type Tone = keyof typeof TONES;
 
 const STATUS_TONE: Record<string, Tone> = {
-  active: "green", paid: "green", succeeded: "green", completed: "green", won: "green", converted: "green",
+  active: "green", paid: "green", succeeded: "green", completed: "green", won: "green", converted: "green", live: "green",
   onboarding: "amber", trial: "amber", pending: "amber", qualified: "amber", contacted: "amber", in_progress: "indigo",
-  past_due: "red", failed: "red", overdue: "red", lost: "red", urgent: "red", unqualified: "red",
+  waiting_on_client: "amber", client_review: "amber", revisions: "amber",
+  past_due: "red", failed: "red", overdue: "red", lost: "red", urgent: "red", unqualified: "red", at_risk: "red",
   open: "indigo", new: "indigo", todo: "indigo", high: "amber", medium: "neutral", low: "neutral",
-  draft: "neutral", paused: "neutral", canceled: "neutral", archived: "neutral", void: "neutral", voided: "neutral", refunded: "neutral",
+  building: "indigo", ready_to_launch: "indigo", ready_to_build: "neutral",
+  draft: "neutral", paused: "neutral", canceled: "neutral", archived: "neutral", closed: "neutral", void: "neutral", voided: "neutral", refunded: "neutral",
 };
 
 export function StatusBadge({ status, tone }: { status: string; tone?: Tone }) {

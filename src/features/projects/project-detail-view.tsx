@@ -4,19 +4,27 @@ import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
-import { ChevronLeft, Plus } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { ChevronLeft, Pencil, Plus } from "lucide-react";
 import { setTaskCompletion } from "@/server/actions/tasks";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { TaskFormDialog } from "@/features/tasks/task-form-dialog";
+import { ProjectFormDialog } from "./project-form-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export function ProjectDetailView({ detail }: { detail: any }) {
+export function ProjectDetailView({
+  detail, members, clients,
+}: {
+  detail: any;
+  members: { userId: string; name: string }[];
+  clients: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const { project, tasks, taskCount, completedCount, progress, upcoming } = detail;
   const [taskOpen, setTaskOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   async function toggle(taskId: string, completed: boolean) {
     const result = await setTaskCompletion(taskId, completed);
@@ -39,12 +47,39 @@ export function ProjectDetailView({ detail }: { detail: any }) {
             </div>
             {project.description && <p className="mt-1 text-[12.5px] text-muted-foreground">{project.description}</p>}
             <p className="mt-1 text-[11.5px] text-muted-foreground">
-              {project.clientName ?? "Internal"} · Owner: {project.ownerName ?? "Unassigned"}
+              {project.clientName ?? "Internal"}
               {project.dueDate && ` · Due ${project.dueDate}`}
             </p>
           </div>
-          <Button size="sm" className="gap-1.5" onClick={() => setTaskOpen(true)}><Plus className="size-3.5" /> Add task</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditOpen(true)}><Pencil className="size-3.5" /> Edit</Button>
+            <Button size="sm" className="gap-1.5" onClick={() => setTaskOpen(true)}><Plus className="size-3.5" /> Add task</Button>
+          </div>
         </div>
+
+        <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-border/60 pt-3 text-[12.5px] sm:grid-cols-5">
+          <div>
+            <dt className="text-muted-foreground">Current stage</dt>
+            <dd className="mt-0.5"><StatusBadge status={project.status} /></dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Owner</dt>
+            <dd className="mt-0.5 font-semibold">{project.ownerName ?? "Unassigned"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Waiting on</dt>
+            <dd className="mt-0.5 font-semibold">{project.waitingOn || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Next action</dt>
+            <dd className="mt-0.5 font-semibold">{project.nextAction || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Last update</dt>
+            <dd className="mt-0.5 font-semibold">{formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true })}</dd>
+          </div>
+        </dl>
+
         <div className="mt-4 grid grid-cols-3 gap-4 border-t border-border/60 pt-3 text-[12.5px]">
           <div><p className="text-muted-foreground">Progress</p><p className="font-semibold">{progress}%</p></div>
           <div><p className="text-muted-foreground">Open tasks</p><p className="font-semibold">{taskCount - completedCount}</p></div>
@@ -93,6 +128,8 @@ export function ProjectDetailView({ detail }: { detail: any }) {
         task={null}
         fixedProjectId={project.id}
       />
+
+      <ProjectFormDialog open={editOpen} onOpenChange={setEditOpen} members={members} clients={clients} project={project} />
     </div>
   );
 }

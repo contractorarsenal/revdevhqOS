@@ -334,19 +334,34 @@ export const calendarEvents = pgTable("calendar_events", {
   index("calendar_events_task_idx").on(t.taskId),
 ]);
 
-export const projectStatus = pgEnum("project_status", ["planning", "active", "on_hold", "completed", "archived"]);
+// "planning", "active", "on_hold", "completed", "archived" are the original
+// 5 values — kept (never removed; Postgres can't drop enum values safely)
+// but no longer assignable going forward. Existing rows were migrated
+// deterministically onto the 11 values below; see the CA Command Center
+// project-stage migration. New rows use the values after "archived".
+export const projectStatus = pgEnum("project_status", [
+  "planning", "active", "on_hold", "completed", "archived",
+  "onboarding", "waiting_on_client", "ready_to_build", "building", "client_review",
+  "revisions", "ready_to_launch", "live", "paused", "at_risk", "closed",
+]);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
-  status: projectStatus("status").notNull().default("planning"),
+  status: projectStatus("status").notNull().default("ready_to_build"),
   ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   startDate: date("start_date"),
   dueDate: date("due_date"),
   color: text("color"),
+  // What/who this project is blocked on, and the concrete next step — kept
+  // as free-text fields separate from status so status stays a pure
+  // lifecycle value (see CURRENT STAGE / WAITING ON / NEXT ACTION on the
+  // project detail view).
+  waitingOn: text("waiting_on"),
+  nextAction: text("next_action"),
   // Set when status transitions to "completed"; used by goal metrics to
   // attribute a completion to a specific period. Cleared if reopened.
   completedAt: timestamp("completed_at", { withTimezone: true }),

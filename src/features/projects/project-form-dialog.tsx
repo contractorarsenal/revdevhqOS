@@ -6,7 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
-import { projectSchema } from "@/lib/validation";
+import { projectSchema, PROJECT_STATUSES } from "@/lib/validation";
+import { PROJECT_STATUS_LABEL } from "./project-status";
 import { createProject, updateProject } from "@/server/actions/projects";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,10 @@ export function ProjectFormDialog({
   onOpenChange: (open: boolean) => void;
   members: { userId: string; name: string }[];
   clients: { id: string; name: string }[];
-  project?: { id: string; name: string; description: string | null; status: string; ownerId: string | null; clientId: string | null; startDate: string | null; dueDate: string | null; color: string | null } | null;
+  project?: {
+    id: string; name: string; description: string | null; status: string; ownerId: string | null; clientId: string | null;
+    startDate: string | null; dueDate: string | null; waitingOn?: string | null; nextAction?: string | null; color: string | null;
+  } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -37,11 +41,13 @@ export function ProjectFormDialog({
       form.reset({
         name: project?.name ?? "",
         description: project?.description ?? "",
-        status: (project?.status as FormValues["status"]) ?? "planning",
+        status: (project?.status as FormValues["status"]) ?? "ready_to_build",
         ownerId: project?.ownerId ?? "",
         clientId: project?.clientId ?? "",
         startDate: project?.startDate ?? "",
         dueDate: project?.dueDate ?? "",
+        waitingOn: project?.waitingOn ?? "",
+        nextAction: project?.nextAction ?? "",
         color: project?.color ?? COLORS[0],
       });
     }
@@ -75,7 +81,7 @@ export function ProjectFormDialog({
             <div className="space-y-1">
               <Label>Status</Label>
               <select {...form.register("status")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
-                {["planning", "active", "on_hold", "completed", "archived"].map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+                {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{PROJECT_STATUS_LABEL[s]}</option>)}
               </select>
             </div>
             <div className="space-y-1">
@@ -100,6 +106,16 @@ export function ProjectFormDialog({
               <option value="">None — internal project</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Waiting on <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Input {...form.register("waitingOn")} placeholder="Client feedback on mockups" />
+            </div>
+            <div className="space-y-1">
+              <Label>Next action <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Input {...form.register("nextAction")} placeholder="Send revised proposal" />
+            </div>
           </div>
           <div className="space-y-1">
             <Label>Color</Label>

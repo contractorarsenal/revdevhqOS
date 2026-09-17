@@ -9,7 +9,8 @@ export async function listProjects(workspaceId: string, includeArchived = false)
     .select({
       id: projects.id, name: projects.name, description: projects.description, status: projects.status,
       ownerId: projects.ownerId, ownerName: profiles.name, clientId: projects.clientId, clientName: clients.name,
-      startDate: projects.startDate, dueDate: projects.dueDate, color: projects.color, createdAt: projects.createdAt,
+      startDate: projects.startDate, dueDate: projects.dueDate, waitingOn: projects.waitingOn,
+      nextAction: projects.nextAction, color: projects.color, createdAt: projects.createdAt, updatedAt: projects.updatedAt,
     })
     .from(projects)
     .leftJoin(profiles, eq(projects.ownerId, profiles.id))
@@ -17,7 +18,7 @@ export async function listProjects(workspaceId: string, includeArchived = false)
     .where(
       includeArchived
         ? eq(projects.workspaceId, workspaceId)
-        : and(eq(projects.workspaceId, workspaceId), ne(projects.status, "archived"))
+        : and(eq(projects.workspaceId, workspaceId), ne(projects.status, "closed"))
     )
     .orderBy(projects.createdAt);
 
@@ -46,7 +47,8 @@ export async function getProjectDetail(workspaceId: string, projectId: string) {
     .select({
       id: projects.id, name: projects.name, description: projects.description, status: projects.status,
       ownerId: projects.ownerId, ownerName: profiles.name, clientId: projects.clientId, clientName: clients.name,
-      startDate: projects.startDate, dueDate: projects.dueDate, color: projects.color, createdAt: projects.createdAt,
+      startDate: projects.startDate, dueDate: projects.dueDate, waitingOn: projects.waitingOn,
+      nextAction: projects.nextAction, color: projects.color, createdAt: projects.createdAt, updatedAt: projects.updatedAt,
     })
     .from(projects)
     .leftJoin(profiles, eq(projects.ownerId, profiles.id))

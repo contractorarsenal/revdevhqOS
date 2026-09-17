@@ -61,7 +61,8 @@ export default async function DashboardPage() {
 
   const pendingApprovals = approvals.filter((a) => a.status === "pending");
   const waitingTasks = tasksAll.filter((t) => t.status === "waiting").slice(0, 5);
-  const activeWorkProjects = projectsAll.filter((p) => p.status === "active" || p.status === "planning").slice(0, 4);
+  const ACTIVE_PROJECT_STATUSES = new Set(["ready_to_build", "building", "client_review", "revisions", "ready_to_launch"]);
+  const activeWorkProjects = projectsAll.filter((p) => ACTIVE_PROJECT_STATUSES.has(p.status)).slice(0, 4);
   const activeWorkTasks = tasksAll.filter((t) => t.status === "in_progress").slice(0, 4);
 
   return (
@@ -86,7 +87,7 @@ export default async function DashboardPage() {
         <Link href="/projects" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
           <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Active projects</p>
           <p className="tabular-nums mt-1 truncate text-[19px] font-semibold tracking-tight">{operational.activeProjects}</p>
-          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">planning + active</p>
+          <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">queued through pre-launch</p>
         </Link>
         <Link href="/tasks" className="min-w-0 rounded-lg border border-border bg-card px-3.5 py-3 shadow-sm hover:bg-muted/30">
           <p className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Waiting on client</p>
