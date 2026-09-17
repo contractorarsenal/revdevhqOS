@@ -19,7 +19,7 @@ config({ path: ".env" });
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
 import { createClient } from "@supabase/supabase-js";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ilike } from "drizzle-orm";
 import * as schema from "../src/lib/db/schema";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? "jay@revdevhq.com").toLowerCase();
@@ -163,28 +163,42 @@ async function main() {
         console.log("✓ Promoted existing membership to owner.");
       }
     } else {
-      const slug = `${WORKSPACE_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-${Math.random().toString(36).slice(2, 7)}`;
-      await db.transaction(async (tx) => {
-        const [ws] = await tx
-          .insert(schema.workspaces)
-          .values({ name: WORKSPACE_NAME, slug })
-          .returning();
-        await tx.insert(schema.workspaceMembers).values({ workspaceId: ws.id, userId: userId!, role: "owner" });
-        await tx.insert(schema.pipelineStages).values(
-          DEFAULT_STAGES.map((s, i) => ({
-            workspaceId: ws.id, name: s.name, probability: s.probability, position: i,
-            isWon: s.isWon ?? false, isLost: s.isLost ?? false,
-          }))
-        );
-        const [template] = await tx
-          .insert(schema.onboardingTemplates)
-          .values({ workspaceId: ws.id, name: "Standard agency onboarding", isDefault: true })
-          .returning();
-        await tx.insert(schema.onboardingSteps).values(
-          DEFAULT_ONBOARDING_STEPS.map((name, i) => ({ templateId: template.id, name, position: i }))
-        );
-      });
-      console.log(`✓ Created workspace "${WORKSPACE_NAME}" with ${ADMIN_EMAIL} as owner (default pipeline + onboarding template seeded).`);
+      // An existing workspace with this name means we're adding another owner
+      // to it (e.g. a second internal user), not bootstrapping a new agency —
+      // join it instead of creating a duplicate workspace + default data.
+      const [existing] = await db
+        .select({ id: schema.workspaces.id, name: schema.workspaces.name })
+        .from(schema.workspaces)
+        .where(ilike(schema.workspaces.name, WORKSPACE_NAME))
+        .limit(1);
+
+      if (existing) {
+        await db.insert(schema.workspaceMembers).values({ workspaceId: existing.id, userId: userId!, role: "owner" });
+        console.log(`✓ Joined existing workspace "${existing.name}" as owner.`);
+      } else {
+        const slug = `${WORKSPACE_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-${Math.random().toString(36).slice(2, 7)}`;
+        await db.transaction(async (tx) => {
+          const [ws] = await tx
+            .insert(schema.workspaces)
+            .values({ name: WORKSPACE_NAME, slug })
+            .returning();
+          await tx.insert(schema.workspaceMembers).values({ workspaceId: ws.id, userId: userId!, role: "owner" });
+          await tx.insert(schema.pipelineStages).values(
+            DEFAULT_STAGES.map((s, i) => ({
+              workspaceId: ws.id, name: s.name, probability: s.probability, position: i,
+              isWon: s.isWon ?? false, isLost: s.isLost ?? false,
+            }))
+          );
+          const [template] = await tx
+            .insert(schema.onboardingTemplates)
+            .values({ workspaceId: ws.id, name: "Standard agency onboarding", isDefault: true })
+            .returning();
+          await tx.insert(schema.onboardingSteps).values(
+            DEFAULT_ONBOARDING_STEPS.map((name, i) => ({ templateId: template.id, name, position: i }))
+          );
+        });
+        console.log(`✓ Created workspace "${WORKSPACE_NAME}" with ${ADMIN_EMAIL} as owner (default pipeline + onboarding template seeded).`);
+      }
     }
     console.log(`\nDone. Sign in at /sign-in as ${ADMIN_EMAIL}.`);
   } finally {

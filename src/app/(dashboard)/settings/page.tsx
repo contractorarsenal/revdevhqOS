@@ -17,6 +17,7 @@ export default async function SettingsPage() {
       role={ctx.role}
       members={members}
       stages={stages}
+      account={{ userId: ctx.user.id, name: ctx.user.name, email: ctx.user.email }}
     />
   );
 }

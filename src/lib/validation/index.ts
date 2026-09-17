@@ -37,6 +37,22 @@ export const workspaceSchema = z.object({
   timezone: z.string().trim().min(1).max(64).default("UTC"),
 });
 
+export const WORKSPACE_ROLES = ["owner", "admin", "manager", "member", "viewer"] as const;
+
+export const changePasswordSchema = z.object({
+  password: z.string().min(8, "Password must be at least 8 characters").max(72),
+});
+
+export const inviteMemberSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+  name: z.string().trim().min(1, "Name is required").max(120),
+  role: z.enum(WORKSPACE_ROLES),
+});
+
+export const updateMemberRoleSchema = z.object({
+  role: z.enum(WORKSPACE_ROLES),
+});
+
 export const clientSchema = z.object({
   name: z.string().trim().min(1, "Company name is required").max(200),
   website: optionalTrimmed,
