@@ -1,15 +1,15 @@
 /**
- * PGlite integration tests for CLIENT LEAD MANAGEMENT. The production query
- * builders, ownership/assignee guards, and the canonical createClientLead()
- * service are exercised against embedded Postgres. `@/lib/db` is mocked to
- * that same embedded instance so createClientLead() and logActivity() (which
- * both use the global `db`) write for real, and workspace-guards' injectable
- * `guardDeps.db` is pointed at it too.
+ * PGlite integration tests for CLIENT LEAD MANAGEMENT (post sales/client
+ * leads split — Slice 6). The production query builders, ownership/assignee
+ * guards, and the canonical createClientLead() service are exercised
+ * against embedded Postgres, targeting the dedicated `client_leads` table.
+ * `@/lib/db` is mocked to that same embedded instance so createClientLead()
+ * and logActivity() (which both use the global `db`) write for real, and
+ * workspace-guards' injectable `guardDeps.db` is pointed at it too.
  *
- * Prerequisite tables are minimal stubs with production column names (the
- * `leads` stub carries the full client-lead column set, including the 0016
- * additions) so the real drizzle queries run unmodified. Enum columns are
- * modelled as text since these tests don't exercise the enum ALTERs.
+ * Prerequisite tables are minimal stubs with production column names.
+ * Enum columns are modelled as text since these tests don't exercise the
+ * enum ALTERs.
  *
  * Scenario coverage (numbers refer to the feature's test checklist):
  *  1 client-scoped list · 2 cross-client denial · 6 suspended excluded ·
@@ -19,7 +19,8 @@
  *  18 needs response · 19 week · 20 month · 21 avg/month · 22 tz boundary ·
  *  23 archived excluded · 24 search · 25 status · 26 source · 27 assignment ·
  *  31 internal notes hidden · 32 activity logged · 33 foreign client_id
- *  rejected · 34 workspace-scoped · 35 empty state.
+ *  rejected · 34 workspace-scoped · 35 empty state · 36 clientId is
+ *  structurally immutable (the historical "edit clears client" bug class).
  */
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 
@@ -38,7 +39,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { leads, activityLogs } from "@/lib/db/schema";
+import { clientLeads, activityLogs } from "@/lib/db/schema";
 import {
   listClientLeads, getClientLead, getClientLeadInternal, getClientLeadMetrics, listEligibleAssignees,
 } from "@/server/queries/client-leads";
@@ -104,30 +105,26 @@ beforeAll(async () => {
       metadata jsonb,
       created_at timestamptz NOT NULL DEFAULT now()
     );
-    CREATE TABLE leads (
+    CREATE TABLE client_leads (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id uuid NOT NULL,
-      client_id uuid,
-      company text NOT NULL,
-      contact_name text,
+      client_id uuid NOT NULL,
+      name text NOT NULL,
       email text,
       phone text,
       source text,
       status text NOT NULL DEFAULT 'new',
-      service_interest text,
+      requested_service text,
       estimated_value numeric(12,2),
-      estimated_mrr numeric(12,2),
       closed_value numeric(12,2),
       owner_id uuid,
-      next_follow_up_at timestamptz,
-      last_contacted_at timestamptz,
       received_at timestamptz NOT NULL DEFAULT now(),
+      last_contacted_at timestamptz,
       estimate_scheduled_at timestamptz,
       won_at timestamptz,
       lost_at timestamptz,
       notes text,
       internal_notes text,
-      converted_client_id uuid,
       archived_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
@@ -154,9 +151,9 @@ afterAll(async () => {
   await client.close();
 });
 
-/* helper: insert a lead, returning its id */
-async function insertLead(vals: typeof leads.$inferInsert): Promise<string> {
-  const [row] = await db.insert(leads).values(vals).returning({ id: leads.id });
+/* helper: insert a client lead, returning its id */
+async function insertLead(vals: typeof clientLeads.$inferInsert): Promise<string> {
+  const [row] = await db.insert(clientLeads).values(vals).returning({ id: clientLeads.id });
   return row.id;
 }
 
@@ -186,16 +183,17 @@ describe("createClientLead — the single canonical creation path [9, 32]", () =
     expect(lead?.receivedAt).toBeInstanceOf(Date);
   });
 
-  it("writes a 'lead.created' activity log entry (channel recorded, no sensitive content) [32]", async () => {
+  it("writes a 'client_lead.created' activity log entry, addressed by entityId (not the FK-constrained leadId column, which points at a different table entirely) [32]", async () => {
     const { id } = await createClientLead({
       workspaceId: WS1, clientId: CLIENT_CREATE, name: "Logged Lead",
       source: "Referral", createdVia: "api", actorId: OWNER_F,
     });
-    const logs = await db.select().from(activityLogs).where(eq(activityLogs.leadId, id));
+    const logs = await db.select().from(activityLogs).where(eq(activityLogs.entityId, id));
     expect(logs).toHaveLength(1);
-    expect(logs[0].action).toBe("lead.created");
-    expect(logs[0].entityType).toBe("lead");
-    expect(logs[0].metadata).toMatchObject({ source: "Referral", via: "api", clientLead: true });
+    expect(logs[0].action).toBe("client_lead.created");
+    expect(logs[0].entityType).toBe("client_lead");
+    expect(logs[0].leadId).toBeNull();
+    expect(logs[0].metadata).toMatchObject({ source: "Referral", via: "api" });
   });
 });
 
@@ -203,8 +201,8 @@ describe("client scoping & cross-client isolation [1, 2, 33, 34]", () => {
   let leadA = "";
   let leadB = "";
   beforeAll(async () => {
-    leadA = await insertLead({ workspaceId: WS1, clientId: CLIENT_A, company: "A Co", contactName: "Client A Lead", status: "new" });
-    leadB = await insertLead({ workspaceId: WS1, clientId: CLIENT_B, company: "B Co", contactName: "Client B Lead", status: "new" });
+    leadA = await insertLead({ workspaceId: WS1, clientId: CLIENT_A, name: "Client A Lead", status: "new" });
+    leadB = await insertLead({ workspaceId: WS1, clientId: CLIENT_B, name: "Client B Lead", status: "new" });
   });
 
   it("a client only sees its own leads [1]", async () => {
@@ -229,12 +227,25 @@ describe("client scoping & cross-client isolation [1, 2, 33, 34]", () => {
     await expect(assertClientOwnedLead(WS2, CLIENT_A, leadA)).rejects.toThrow(/not found/i);
     expect((await getClientLeadMetrics(db, WS2, CLIENT_A, TZ, "2026-07-14")).totalLeads).toBe(0);
   });
+
+  it("clientId has no mutation path at all — the historical 'editing clears the client association' bug is structurally impossible [36]", async () => {
+    // Every real mutation (updateClientLeadStatus, assignClientLead, etc.)
+    // re-derives clientId from the portal session and never accepts it as
+    // input (see clientLeadStatusSchema and friends — none of them even
+    // have a clientId field). Directly attempting to null it out at the
+    // schema level is rejected by the NOT NULL constraint itself.
+    await expect(
+      client.query(`UPDATE client_leads SET client_id = NULL WHERE id = '${leadA}'`)
+    ).rejects.toThrow(/null value|not-null/i);
+    const stillOwned = await getClientLead(db, WS1, CLIENT_A, leadA);
+    expect(stillOwned?.id).toBe(leadA);
+  });
 });
 
 describe("internal notes never reach the portal query [31, 7]", () => {
   it("getClientLead omits internalNotes; getClientLeadInternal includes it", async () => {
     const id = await insertLead({
-      workspaceId: WS1, clientId: CLIENT_A, company: "Notes Co", contactName: "Has Notes",
+      workspaceId: WS1, clientId: CLIENT_A, name: "Has Notes",
       status: "contacted", notes: "client-visible note", internalNotes: "STAFF ONLY — do not expose",
     });
     const portal = await getClientLead(db, WS1, CLIENT_A, id);
@@ -276,8 +287,8 @@ describe("eligible assignees & assignment guards [13, 14, 6, 12]", () => {
   });
 
   it("a persisted assignment reads back through the scoped query [12]", async () => {
-    const id = await insertLead({ workspaceId: WS1, clientId: CLIENT_F, company: "Assign Co", contactName: "Assign Me", status: "new" });
-    await db.update(leads).set({ ownerId: ASSIGNEE_1 }).where(and(eq(leads.id, id), eq(leads.workspaceId, WS1), eq(leads.clientId, CLIENT_F)));
+    const id = await insertLead({ workspaceId: WS1, clientId: CLIENT_F, name: "Assign Me", status: "new" });
+    await db.update(clientLeads).set({ ownerId: ASSIGNEE_1 }).where(and(eq(clientLeads.id, id), eq(clientLeads.workspaceId, WS1), eq(clientLeads.clientId, CLIENT_F)));
     const lead = await getClientLead(db, WS1, CLIENT_F, id);
     expect(lead?.assignedToId).toBe(ASSIGNEE_1);
     expect(lead?.assignedToName).toBe("Aaron Member");
@@ -285,21 +296,23 @@ describe("eligible assignees & assignment guards [13, 14, 6, 12]", () => {
 });
 
 describe("persistence mirroring the server actions [10, 11]", () => {
-  it("a status change persists and stamps the matching timestamp (board drag & status edit) [10, 11]", async () => {
-    const id = await insertLead({ workspaceId: WS1, clientId: CLIENT_A, company: "Persist Co", contactName: "Persist", status: "new" });
+  it("a status change persists and stamps the matching timestamp (board drag & status edit), and clientId never moves [10, 11]", async () => {
+    const id = await insertLead({ workspaceId: WS1, clientId: CLIENT_A, name: "Persist", status: "new" });
     const now = new Date("2026-07-16T10:00:00Z");
     // Exactly what updateClientLeadStatus does (drag and the detail edit share it).
-    await db.update(leads).set({ status: "contacted", ...clientLeadStatusTimestamp("contacted", now) })
-      .where(and(eq(leads.id, id), eq(leads.workspaceId, WS1), eq(leads.clientId, CLIENT_A)));
+    await db.update(clientLeads).set({ status: "contacted", ...clientLeadStatusTimestamp("contacted", now) })
+      .where(and(eq(clientLeads.id, id), eq(clientLeads.workspaceId, WS1), eq(clientLeads.clientId, CLIENT_A)));
     const lead = await getClientLead(db, WS1, CLIENT_A, id);
     expect(lead?.status).toBe("contacted");
     expect(lead?.contactedAt).toBeInstanceOf(Date);
 
-    await db.update(leads).set({ status: "won", ...clientLeadStatusTimestamp("won", now) })
-      .where(and(eq(leads.id, id), eq(leads.workspaceId, WS1), eq(leads.clientId, CLIENT_A)));
+    await db.update(clientLeads).set({ status: "won", ...clientLeadStatusTimestamp("won", now) })
+      .where(and(eq(clientLeads.id, id), eq(clientLeads.workspaceId, WS1), eq(clientLeads.clientId, CLIENT_A)));
     const won = await getClientLead(db, WS1, CLIENT_A, id);
     expect(won?.status).toBe("won");
     expect(won?.wonAt).toBeInstanceOf(Date);
+    // clientId was never part of either update's SET clause — still owned by CLIENT_A.
+    expect(await getClientLead(db, WS1, CLIENT_A, id)).not.toBeNull();
   });
 });
 
@@ -308,14 +321,14 @@ describe("client lead metrics [15-23, 35]", () => {
 
   beforeAll(async () => {
     await client.exec(`
-      INSERT INTO leads (workspace_id, client_id, company, contact_name, status, estimated_value, closed_value, received_at, last_contacted_at, estimate_scheduled_at, won_at, lost_at, archived_at) VALUES
-        ('${WS1}','${CLIENT_M}','M','L1 new',       'new',                500,  NULL, '2026-07-14T18:00:00Z', NULL,                   NULL,                   NULL,                   NULL, NULL),
-        ('${WS1}','${CLIENT_M}','M','L2 contacted', 'contacted',          300,  NULL, '2026-07-02T18:00:00Z', '2026-07-02T19:00:00Z', NULL,                   NULL,                   NULL, NULL),
-        ('${WS1}','${CLIENT_M}','M','L3 estimate',  'estimate_scheduled', 1200, NULL, '2026-07-10T18:00:00Z', '2026-07-10T18:30:00Z', '2026-07-10T19:00:00Z', NULL,                   NULL, NULL),
-        ('${WS1}','${CLIENT_M}','M','L4 won',       'won',                2000, 2500, '2026-06-20T18:00:00Z', '2026-06-21T18:00:00Z', NULL,                   '2026-06-25T00:00:00Z', NULL, NULL),
-        ('${WS1}','${CLIENT_M}','M','L5 lost',      'lost',               NULL, NULL, '2026-06-01T18:00:00Z', NULL,                   NULL,                   NULL,                   '2026-06-03T00:00:00Z', NULL),
-        ('${WS1}','${CLIENT_M}','M','L6 archived',  'new',                999,  NULL, '2026-07-14T18:00:00Z', NULL,                   NULL,                   NULL,                   NULL, '2026-07-14T20:00:00Z'),
-        ('${WS1}','${CLIENT_M}','M','L7 stray-cv',  'contacted',          100,  777,  '2026-07-08T18:00:00Z', '2026-07-08T19:00:00Z', NULL,                   NULL,                   NULL, NULL);
+      INSERT INTO client_leads (workspace_id, client_id, name, status, estimated_value, closed_value, received_at, last_contacted_at, estimate_scheduled_at, won_at, lost_at, archived_at) VALUES
+        ('${WS1}','${CLIENT_M}','L1 new',       'new',                500,  NULL, '2026-07-14T18:00:00Z', NULL,                   NULL,                   NULL,                   NULL, NULL),
+        ('${WS1}','${CLIENT_M}','L2 contacted', 'contacted',          300,  NULL, '2026-07-02T18:00:00Z', '2026-07-02T19:00:00Z', NULL,                   NULL,                   NULL, NULL),
+        ('${WS1}','${CLIENT_M}','L3 estimate',  'estimate_scheduled', 1200, NULL, '2026-07-10T18:00:00Z', '2026-07-10T18:30:00Z', '2026-07-10T19:00:00Z', NULL,                   NULL, NULL),
+        ('${WS1}','${CLIENT_M}','L4 won',       'won',                2000, 2500, '2026-06-20T18:00:00Z', '2026-06-21T18:00:00Z', NULL,                   '2026-06-25T00:00:00Z', NULL, NULL),
+        ('${WS1}','${CLIENT_M}','L5 lost',      'lost',               NULL, NULL, '2026-06-01T18:00:00Z', NULL,                   NULL,                   NULL,                   '2026-06-03T00:00:00Z', NULL),
+        ('${WS1}','${CLIENT_M}','L6 archived',  'new',                999,  NULL, '2026-07-14T18:00:00Z', NULL,                   NULL,                   NULL,                   NULL, '2026-07-14T20:00:00Z'),
+        ('${WS1}','${CLIENT_M}','L7 stray-cv',  'contacted',          100,  777,  '2026-07-08T18:00:00Z', '2026-07-08T19:00:00Z', NULL,                   NULL,                   NULL, NULL);
     `);
   });
 
@@ -357,9 +370,9 @@ describe("timezone-correct period boundaries [22]", () => {
   beforeAll(async () => {
     // T1 is June 30 22:00 in LA (July in UTC); T2 is July 1 01:00 in LA.
     await client.exec(`
-      INSERT INTO leads (workspace_id, client_id, company, contact_name, status, received_at) VALUES
-        ('${WS1}','${CLIENT_TZ}','TZ','T1', 'new', '2026-07-01T05:00:00Z'),
-        ('${WS1}','${CLIENT_TZ}','TZ','T2', 'new', '2026-07-01T08:00:00Z');
+      INSERT INTO client_leads (workspace_id, client_id, name, status, received_at) VALUES
+        ('${WS1}','${CLIENT_TZ}','T1', 'new', '2026-07-01T05:00:00Z'),
+        ('${WS1}','${CLIENT_TZ}','T2', 'new', '2026-07-01T08:00:00Z');
     `);
   });
 
@@ -376,10 +389,10 @@ describe("timezone-correct period boundaries [22]", () => {
 describe("search, filters & sort [24, 25, 26, 27]", () => {
   beforeAll(async () => {
     await client.exec(`
-      INSERT INTO leads (workspace_id, client_id, company, contact_name, email, phone, source, status, estimated_value, owner_id, received_at) VALUES
-        ('${WS1}','${CLIENT_FILT}','F','Alice Johnson','alice@example.com','555-0001','Website', 'new',       100, NULL,          '2026-07-01T10:00:00Z'),
-        ('${WS1}','${CLIENT_FILT}','F','Bob Smith',    'bob@example.com',  '555-0002','Referral','contacted', 900, '${ASSIGNEE_1}','2026-07-05T10:00:00Z'),
-        ('${WS1}','${CLIENT_FILT}','F','Carol White',  'carol@example.com','555-0003','Website', 'won',       50,  '${ASSIGNEE_2}','2026-07-03T10:00:00Z');
+      INSERT INTO client_leads (workspace_id, client_id, name, email, phone, source, status, estimated_value, owner_id, received_at) VALUES
+        ('${WS1}','${CLIENT_FILT}','Alice Johnson','alice@example.com','555-0001','Website', 'new',       100, NULL,          '2026-07-01T10:00:00Z'),
+        ('${WS1}','${CLIENT_FILT}','Bob Smith',    'bob@example.com',  '555-0002','Referral','contacted', 900, '${ASSIGNEE_1}','2026-07-05T10:00:00Z'),
+        ('${WS1}','${CLIENT_FILT}','Carol White',  'carol@example.com','555-0003','Website', 'won',       50,  '${ASSIGNEE_2}','2026-07-03T10:00:00Z');
     `);
   });
 

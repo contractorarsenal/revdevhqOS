@@ -3,19 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Users, Menu, LogOut, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
+import { Home, Users, MessageSquareText, Menu, LogOut, TrendingUp, FileBarChart } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 /** The client portal's own mobile nav — deliberately separate from the
  * internal MobileBottomNav/MoreMenuSheet and never imports from
- * components/layout. "Overview" and "Leads" are real destinations; Support
- * and Rankings/Reports are surfaced as Coming Soon inside More rather than
- * as dead links (see PortalOverview's own futureModules list, which this
- * mirrors). */
+ * components/layout. "Overview", "Leads", and "Requests" are real
+ * destinations (Support Requests graduated out of Coming Soon — see
+ * client_requests); Rankings/Reports are still surfaced as Coming Soon
+ * inside More rather than as dead links (see PortalOverview's own
+ * futureModules list, which this mirrors). */
 const COMING_SOON = [
-  { label: "Support", icon: LifeBuoy },
   { label: "Google Rankings", icon: TrendingUp },
   { label: "Progress Reports", icon: FileBarChart },
 ];
@@ -23,6 +23,7 @@ const COMING_SOON = [
 const PRIMARY_TABS = [
   { href: "/portal", label: "Overview", icon: Home },
   { href: "/portal/leads", label: "Leads", icon: Users },
+  { href: "/portal/requests", label: "Requests", icon: MessageSquareText },
 ];
 
 export function PortalMobileNav({ accent }: { accent: string }) {

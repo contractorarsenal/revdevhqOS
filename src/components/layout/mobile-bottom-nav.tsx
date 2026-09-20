@@ -10,7 +10,7 @@ import { MoreMenuSheet } from "@/components/layout/more-menu-sheet";
 /** Persistent bottom tab bar for narrow viewports (below `md`). Fixed height
  * of 4rem (16) — `(dashboard)/layout.tsx` pads main content by the same
  * amount so nothing renders underneath it. */
-export function MobileBottomNav() {
+export function MobileBottomNav({ pendingApprovals = 0 }: { pendingApprovals?: number }) {
   const pathname = usePathname();
   const active = getActiveMobileTab(pathname);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -26,7 +26,12 @@ export function MobileBottomNav() {
           const isActive = active === item.href;
           const content = (
             <>
-              <item.icon className={cn("size-5", isActive && "text-primary")} aria-hidden />
+              <span className="relative">
+                <item.icon className={cn("size-5", isActive && "text-primary")} aria-hidden />
+                {item.href === "/approvals" && pendingApprovals > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-primary" aria-label="Pending items" />
+                )}
+              </span>
               <span className={cn("text-[10.5px] font-medium leading-none", isActive && "font-semibold text-primary")}>
                 {item.label}
               </span>

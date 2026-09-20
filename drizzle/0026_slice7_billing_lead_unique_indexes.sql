@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "opportunities_lead_id_unique" ON "opportunities" USING btree ("lead_id") WHERE "opportunities"."lead_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payments_subscription_billing_month_unique" ON "payments" USING btree ("subscription_id","billing_month") WHERE "payments"."subscription_id" is not null and "payments"."billing_month" is not null and "payments"."status" != 'voided';

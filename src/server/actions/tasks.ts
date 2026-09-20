@@ -78,6 +78,14 @@ export async function updateTask(taskId: string, input: unknown): Promise<Action
             : null,
       })
       .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, ctx.workspace.id)));
+    if (existing.status !== "completed" && data.status === "completed") {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "task.completed", entityType: "task", entityId: taskId,
+        clientId: data.clientId ?? existing.clientId, leadId: existing.leadId, opportunityId: existing.opportunityId,
+        metadata: { title: data.title },
+      });
+    }
     revalidateTaskPaths(data.clientId ?? existing.clientId);
     return { ok: true };
   } catch (err) {

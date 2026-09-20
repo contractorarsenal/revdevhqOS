@@ -128,74 +128,80 @@
     @apply font-sans;
   }
 }
-/* ===== revdevhqOS brand theme (source: design-reference/original-prototype.html) ===== */
+/* ===== CA Command Center brand theme — black / white / gray, restrained
+   Contractor Arsenal red accent. Primary and destructive are both "red" by
+   design (the brand color doubles as the danger hue), kept visually
+   distinct by depth (primary is a darker brick red; destructive is a
+   brighter, more alarming red) and by the Button component's hierarchy
+   (primary renders solid-filled, destructive renders tinted/ghost) rather
+   than by hue — see src/components/ui/button.tsx. ===== */
 :root {
-  --background: #f7f8fc;
-  --foreground: #111827;
+  --background: #fafafa;
+  --foreground: #111111;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #111111;
   --popover: #ffffff;
-  --popover-foreground: #111827;
-  --primary: #4f46e5;
+  --popover-foreground: #111111;
+  --primary: #9a1f1f;
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #111827;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #eef0fc;
-  --accent-foreground: #4338ca;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #111111;
+  --muted: #f4f4f5;
+  --muted-foreground: #6b7280;
+  --accent: #f4f4f5;
+  --accent-foreground: #111111;
   --destructive: #dc2626;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #4f46e5;
-  --sidebar: #f1f4fa;
-  --sidebar-foreground: #111827;
-  --sidebar-primary: #4f46e5;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #9a1f1f;
+  --sidebar: #f7f7f8;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #9a1f1f;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eef0fc;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #4f46e5;
-  --chart-1: #4f46e5;
-  --chart-2: #0d9488;
-  --chart-3: #b45309;
-  --chart-4: #be185d;
-  --chart-5: #475569;
-  --radius: 0.55rem;
+  --sidebar-accent: #eeeeef;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #9a1f1f;
+  --chart-1: #9a1f1f;
+  --chart-2: #52525b;
+  --chart-3: #0d9488;
+  --chart-4: #b45309;
+  --chart-5: #a1a1aa;
+  --radius: 0.5rem;
 }
 
 .dark {
-  --background: #0e1116;
-  --foreground: #e7ebf3;
-  --card: #161b23;
-  --card-foreground: #e7ebf3;
-  --popover: #161b23;
-  --popover-foreground: #e7ebf3;
-  --primary: #6e76f2;
+  --background: #0a0a0a;
+  --foreground: #f4f4f5;
+  --card: #141415;
+  --card-foreground: #f4f4f5;
+  --popover: #141415;
+  --popover-foreground: #f4f4f5;
+  --primary: #d64545;
   --primary-foreground: #ffffff;
-  --secondary: #212836;
-  --secondary-foreground: #e7ebf3;
-  --muted: #212836;
-  --muted-foreground: #94a0b4;
-  --accent: #232a46;
-  --accent-foreground: #9ba2f7;
-  --destructive: #f26d6d;
-  --border: #273041;
-  --input: #273041;
-  --ring: #6e76f2;
-  --sidebar: #11151d;
-  --sidebar-foreground: #e7ebf3;
-  --sidebar-primary: #6e76f2;
+  --secondary: #212123;
+  --secondary-foreground: #f4f4f5;
+  --muted: #212123;
+  --muted-foreground: #a1a1aa;
+  --accent: #212123;
+  --accent-foreground: #f4f4f5;
+  --destructive: #f16a6a;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #d64545;
+  --sidebar: #0d0d0e;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #d64545;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #232a46;
-  --sidebar-accent-foreground: #e7ebf3;
-  --sidebar-border: #273041;
-  --sidebar-ring: #6e76f2;
-  --chart-1: #6e76f2;
-  --chart-2: #0fa896;
-  --chart-3: #e8a13c;
-  --chart-4: #f26d9d;
-  --chart-5: #94a0b4;
+  --sidebar-accent: #212123;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #27272a;
+  --sidebar-ring: #d64545;
+  --chart-1: #d64545;
+  --chart-2: #a1a1aa;
+  --chart-3: #0fa896;
+  --chart-4: #e8a13c;
+  --chart-5: #71717a;
 }
 
 body {

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-const COLORS = ["#4F46E5", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#7C3AED", "#15803D", "#B91C1C", "#475569"];
+const COLORS = ["#9A1F1F", "#0D9488", "#B45309", "#BE185D", "#0369A1", "#7C3AED", "#15803D", "#EA580C", "#475569"];
 
 export function ClientAvatar({ name, className }: { name: string; className?: string }) {
   let hash = 0;

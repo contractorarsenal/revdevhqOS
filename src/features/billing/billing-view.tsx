@@ -29,7 +29,7 @@ function monthLabel(billingMonth: string | null): string {
 
 function TypeBadge({ value }: { value: string }) {
   return value === "monthly" ? (
-    <StatusBadge status="monthly" tone="indigo" />
+    <StatusBadge status="monthly" tone="blue" />
   ) : (
     <StatusBadge status="one-time" tone="neutral" />
   );

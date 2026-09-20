@@ -57,6 +57,7 @@ beforeAll(async () => {
     CREATE TABLE leads (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id uuid NOT NULL,
+      client_id uuid,
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE tasks (

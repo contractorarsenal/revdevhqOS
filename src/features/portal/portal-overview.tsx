@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, LifeBuoy, TrendingUp, FileBarChart } from "lucide-react";
+import { ArrowRight, CheckCircle2, TrendingUp, FileBarChart } from "lucide-react";
 import { PORTAL_ROLE_LABEL, type ClientPortalRole, type ClientPortalStatus } from "@/lib/portal";
 import { formatMoney } from "@/lib/finance/metrics";
 import type { ClientLeadMetrics } from "@/server/queries/client-leads";
@@ -21,7 +21,6 @@ export function PortalOverview({
   leadMetrics: ClientLeadMetrics;
 }) {
   const futureModules = [
-    { icon: LifeBuoy, label: "Support Requests", note: "Coming soon" },
     { icon: TrendingUp, label: "Google Rankings", note: "Coming soon" },
     { icon: FileBarChart, label: "Progress Reports", note: "Coming soon" },
   ];
@@ -131,7 +130,7 @@ export function PortalOverview({
       </section>
 
       <section>
-        <h2 className="mb-2 text-[12.5px] font-semibold">What&apos;s next in your Command Center</h2>
+        <h2 className="mb-2 text-[12.5px] font-semibold">Coming to your portal</h2>
         <div className="grid gap-2 sm:grid-cols-2">
           {futureModules.map((m) => (
             <div key={m.label} className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-card/60 px-3.5 py-3">

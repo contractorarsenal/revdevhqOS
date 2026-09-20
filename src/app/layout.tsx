@@ -6,8 +6,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "revdevhqOS",
-  description: "Agency CRM and operations platform",
+  title: "CA Command Center",
+  description: "Contractor Arsenal's internal operations system.",
 };
 
 // viewportFit: "cover" lets the mobile bottom nav read real

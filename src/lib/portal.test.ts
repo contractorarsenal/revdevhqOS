@@ -127,10 +127,9 @@ describe("industry theming", () => {
 });
 
 describe("sidebar navigation order", () => {
-  it("matches the requested order exactly", () => {
+  it("matches the requested order exactly — the 6-item daily operating loop", () => {
     expect(SIDEBAR_PRIMARY_NAV.map((i) => i.label)).toEqual([
-      "Dashboard", "Pipeline", "Leads", "Clients", "Calendar",
-      "Billing", "Expenses", "Reports", "Goals", "Tasks", "Projects",
+      "Dashboard", "Leads", "Clients", "Projects", "Tasks", "Needs Jay",
     ]);
   });
 });

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type FormValues = z.input<typeof goalSchema>;
-const COLORS = ["#DC2626", "#4F46E5", "#0D9488", "#B45309", "#BE185D", "#0369A1"];
+const COLORS = ["#DC2626", "#71717a", "#0D9488", "#B45309", "#BE185D", "#0369A1"];
 const METRICS = Object.keys(METRIC_LABEL) as GoalMetricType[];
 
 export type GoalFormDefaults = {

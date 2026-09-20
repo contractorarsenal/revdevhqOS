@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { payments, clients, leads, projects, tasks } from "@/lib/db/schema";
 import type { GoalMetricType } from "@/lib/goals";
@@ -21,7 +21,9 @@ import { periodUtcBounds, revenuePaymentInPeriod } from "./payment-period";
  *   revenue never count.
  * - new_clients: clients CREATED in the period. Archiving later does not
  *   erase the historical acquisition, so archived clients still count.
- * - new_leads: leads created in the period (same reasoning).
+ * - new_leads: Contractor Arsenal sales leads (client_id IS NULL) created
+ *   in the period (same reasoning). Client-generated leads live in the
+ *   separate client_leads table and are never counted toward this goal.
  * - projects_completed / tasks_completed: completed_at inside the period.
  *   Projects completed before this release predate the completed_at column
  *   and cannot be attributed to a period (documented limitation).
@@ -60,7 +62,7 @@ export async function metricValueInPeriod(
       const [row] = await db
         .select({ n: sql<string>`count(*)` })
         .from(leads)
-        .where(and(eq(leads.workspaceId, workspaceId), gte(leads.createdAt, bounds.start), lt(leads.createdAt, bounds.end)));
+        .where(and(eq(leads.workspaceId, workspaceId), isNull(leads.clientId), gte(leads.createdAt, bounds.start), lt(leads.createdAt, bounds.end)));
       return Number(row?.n ?? 0);
     }
     case "projects_completed": {

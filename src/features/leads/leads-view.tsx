@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { format, isPast } from "date-fns";
 import { Target, Plus, ArrowRight, XCircle, Pencil, PhoneCall } from "lucide-react";
 import { type LeadRow } from "@/server/queries/leads";
-import { toInternalEditableStatus } from "@/lib/leads-client";
 import { convertLeadToOpportunity, markLeadLost, touchLeadContact } from "@/server/actions/leads";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
@@ -24,24 +23,18 @@ import { LeadFormDialog } from "./lead-form-dialog";
 import { ClientLeadManualFormDialog } from "./client-lead-manual-form-dialog";
 
 export function LeadsView({
-  leads: allLeads, members, clients, openNew, clientFilter,
+  leads, members, clients, openNew,
 }: {
   leads: LeadRow[];
   members: { userId: string; name: string }[];
   clients: { id: string; name: string }[];
   openNew: boolean;
-  /** From ?client=<id> — set by "View All Client Leads" on the internal
-   * client detail page. Filters the list to just that client's leads. */
-  clientFilter?: string;
 }) {
   const router = useRouter();
   const [formOpen, setFormOpen] = useState(openNew);
   const [clientLeadFormOpen, setClientLeadFormOpen] = useState(false);
   const [editing, setEditing] = useState<LeadRow | null>(null);
   const [drawer, setDrawer] = useState<LeadRow | null>(null);
-
-  const filteredClient = clientFilter ? clients.find((c) => c.id === clientFilter) : undefined;
-  const leads = useMemo(() => (clientFilter ? allLeads.filter((l) => l.clientId === clientFilter) : allLeads), [allLeads, clientFilter]);
 
   const openLeads = useMemo(() => leads.filter((l) => !["converted", "lost", "unqualified"].includes(l.status)), [leads]);
   const potentialMrr = openLeads.reduce((sum, l) => sum + toAmount(l.estimatedMrr), 0);
@@ -111,18 +104,13 @@ export function LeadsView({
     <div>
       <PageHeader
         title="Leads"
-        description={filteredClient ? `Filtered to ${filteredClient.name} — leads generated for this client.` : "Track potential clients, communication, and upcoming follow-ups."}
+        description="Contractor Arsenal's own sales prospects — separate from Client Leads (a client's website/ad leads, tracked under that client's page)."
       >
-        {filteredClient && (
-          <Button size="sm" variant="ghost" onClick={() => router.push("/leads")}>
-            Clear filter
-          </Button>
-        )}
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setClientLeadFormOpen(true)}>
-          <Plus className="size-3.5" /> Add Client Lead
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setClientLeadFormOpen(true)} title="Logs a lead under a specific client — not added to the sales list below">
+          <Plus className="size-3.5" /> Log a client lead
         </Button>
         <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
-          <Plus className="size-3.5" /> Add Lead
+          <Plus className="size-3.5" /> Add lead
         </Button>
       </PageHeader>
 
@@ -145,19 +133,18 @@ export function LeadsView({
         <DataTable columns={columns} data={leads} searchPlaceholder="Search leads…" onRowClick={(row) => setDrawer(row)} />
       )}
 
-      <ClientLeadManualFormDialog open={clientLeadFormOpen} onOpenChange={setClientLeadFormOpen} clients={clients} fixedClientId={clientFilter} />
+      <ClientLeadManualFormDialog open={clientLeadFormOpen} onOpenChange={setClientLeadFormOpen} clients={clients} />
 
       <LeadFormDialog
         open={formOpen}
         onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }}
         members={members}
-        clients={clients}
         lead={
           editing
             ? {
                 id: editing.id, company: editing.company, contactName: editing.contactName ?? "",
                 email: editing.email ?? "", phone: editing.phone ?? "", source: editing.source ?? "",
-                status: toInternalEditableStatus(editing.status),
+                status: editing.status as "new" | "contacted" | "qualified" | "unqualified" | "converted" | "lost",
                 serviceInterest: editing.serviceInterest ?? "",
                 estimatedValue: editing.estimatedValue ?? "", estimatedMrr: editing.estimatedMrr ?? "",
                 ownerId: editing.ownerId ?? "", notes: editing.notes ?? "",

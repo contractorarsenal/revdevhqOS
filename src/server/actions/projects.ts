@@ -38,8 +38,10 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
         clientId: data.clientId ?? null,
         startDate: data.startDate ?? null,
         dueDate: data.dueDate ?? null,
+        waitingOn: data.waitingOn ?? null,
+        nextAction: data.nextAction ?? null,
         color: data.color ?? null,
-        completedAt: data.status === "completed" ? new Date() : null,
+        completedAt: data.status === "live" ? new Date() : null,
       })
       .returning();
 
@@ -49,7 +51,7 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
       metadata: { name: data.name },
     });
     revalidatePath("/projects");
-    if (data.status === "completed") revalidateGoalPaths(); // projects_completed goal metric
+    if (data.status === "live") revalidateGoalPaths(); // projects_completed goal metric
     return { ok: true, data: { id: row.id } };
   } catch (err) {
     return actionError(err);
@@ -74,22 +76,46 @@ export async function updateProject(projectId: string, input: unknown): Promise<
         clientId: data.clientId ?? null,
         startDate: data.startDate ?? null,
         dueDate: data.dueDate ?? null,
+        waitingOn: data.waitingOn ?? null,
+        nextAction: data.nextAction ?? null,
         color: data.color ?? null,
         // Completion timestamp powers "projects completed" goal metrics:
-        // stamped on the transition into completed, kept if already
-        // completed, cleared when the project is reopened.
+        // stamped on the transition into "live" (delivered/launched), kept
+        // if already set, cleared when the project moves off "live".
         completedAt:
-          data.status === "completed"
+          data.status === "live"
             ? existing.completedAt ?? new Date()
             : null,
       })
       .where(eq(projects.id, projectId));
 
+    if (existing.status !== data.status) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "project.stage_changed", entityType: "project", entityId: projectId,
+        metadata: { from: existing.status, to: data.status },
+      });
+    }
+    if (existing.waitingOn !== (data.waitingOn ?? null)) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "project.waiting_on_changed", entityType: "project", entityId: projectId,
+        metadata: { from: existing.waitingOn, to: data.waitingOn ?? null },
+      });
+    }
+    if (existing.nextAction !== (data.nextAction ?? null)) {
+      await logActivity({
+        workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+        action: "project.next_action_changed", entityType: "project", entityId: projectId,
+        metadata: { from: existing.nextAction, to: data.nextAction ?? null },
+      });
+    }
+
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     // projects_completed goal metric: revalidate on any transition into or
-    // out of "completed" (reopening a project un-counts it too).
-    if (data.status === "completed" || existing.completedAt) revalidateGoalPaths();
+    // out of "live" (reopening a project un-counts it too).
+    if (data.status === "live" || existing.completedAt) revalidateGoalPaths();
     return { ok: true };
   } catch (err) {
     return actionError(err);
@@ -99,11 +125,16 @@ export async function updateProject(projectId: string, input: unknown): Promise<
 export async function archiveProject(projectId: string): Promise<ActionResult> {
   try {
     const ctx = await authorize("manager");
-    await ownedProject(ctx.workspace.id, projectId);
+    const existing = await ownedProject(ctx.workspace.id, projectId);
     await db
       .update(projects)
-      .set({ status: "archived", archivedAt: new Date() })
+      .set({ status: "closed", archivedAt: new Date() })
       .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspace.id)));
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "project.archived", entityType: "project", entityId: projectId,
+      metadata: { from: existing.status },
+    });
     revalidatePath("/projects");
     return { ok: true };
   } catch (err) {

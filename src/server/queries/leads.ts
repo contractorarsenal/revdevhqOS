@@ -1,10 +1,18 @@
 import "server-only";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, isNull, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { leads, profiles } from "@/lib/db/schema";
 
 export type LeadRow = Awaited<ReturnType<typeof listLeads>>[number];
 
+/**
+ * Contractor Arsenal sales prospects only. `client_id IS NULL` is the
+ * definitive filter — leads generated FOR a client live in the separate
+ * `client_leads` table (see the sales/client leads split). A handful of
+ * pre-split rows with client_id still set are intentionally left dormant in
+ * this table (never deleted, to avoid orphaning historical references) and
+ * are excluded here so they can never resurface in the sales pipeline.
+ */
 export async function listLeads(workspaceId: string) {
   return db
     .select({
@@ -15,7 +23,6 @@ export async function listLeads(workspaceId: string) {
       phone: leads.phone,
       source: leads.source,
       status: leads.status,
-      clientId: leads.clientId,
       serviceInterest: leads.serviceInterest,
       estimatedValue: leads.estimatedValue,
       estimatedMrr: leads.estimatedMrr,
@@ -29,6 +36,6 @@ export async function listLeads(workspaceId: string) {
     })
     .from(leads)
     .leftJoin(profiles, eq(leads.ownerId, profiles.id))
-    .where(eq(leads.workspaceId, workspaceId))
+    .where(and(eq(leads.workspaceId, workspaceId), isNull(leads.clientId)))
     .orderBy(desc(leads.createdAt));
 }

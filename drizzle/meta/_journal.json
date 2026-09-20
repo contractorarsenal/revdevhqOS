@@ -120,6 +120,76 @@
       "when": 1784141575991,
       "tag": "0016_client_lead_management",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789662877856,
+      "tag": "0017_mixed_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789662916574,
+      "tag": "0018_approvals_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789664916672,
+      "tag": "0019_worried_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789664976241,
+      "tag": "0020_project_status_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789665734211,
+      "tag": "0021_overconfident_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789665743620,
+      "tag": "0022_client_requests_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789668351356,
+      "tag": "0023_mean_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789668360988,
+      "tag": "0024_client_leads_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789668379679,
+      "tag": "0025_client_leads_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789673233607,
+      "tag": "0026_slice7_billing_lead_unique_indexes",
+      "breakpoints": true
     }
   ]
 }

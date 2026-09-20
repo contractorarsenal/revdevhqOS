@@ -150,6 +150,48 @@ export const leads = pgTable("leads", {
   index("leads_workspace_client_idx").on(t.workspaceId, t.clientId),
 ]);
 
+/**
+ * Leads generated FOR a Contractor Arsenal client (their own website/ad
+ * traffic) — structurally separate from `leads` (our own sales prospects).
+ * clientId is required, never optional, so a client lead can never lose its
+ * client association through an edit (the historical bug this table exists
+ * to make impossible). See client_lead_status for the 5-value workflow;
+ * `leads.lead_status` keeps 2 extra values (estimate_scheduled, won) used
+ * only by legacy pre-split rows left in place there.
+ */
+export const clientLeadStatus = pgEnum("client_lead_status", ["new", "contacted", "estimate_scheduled", "won", "lost"]);
+
+export const clientLeads = pgTable("client_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  source: text("source"),
+  status: clientLeadStatus("status").notNull().default("new"),
+  requestedService: text("requested_service"),
+  estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
+  closedValue: numeric("closed_value", { precision: 12, scale: 2 }),
+  ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
+  estimateScheduledAt: timestamp("estimate_scheduled_at", { withTimezone: true }),
+  wonAt: timestamp("won_at", { withTimezone: true }),
+  lostAt: timestamp("lost_at", { withTimezone: true }),
+  // Client-visible.
+  notes: text("notes"),
+  // Staff-only. Never selected by any client-portal-scoped query.
+  internalNotes: text("internal_notes"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("client_leads_workspace_client_idx").on(t.workspaceId, t.clientId),
+  index("client_leads_workspace_status_idx").on(t.workspaceId, t.status),
+  index("client_leads_workspace_received_idx").on(t.workspaceId, t.receivedAt),
+]);
+
 export const pipelineStages = pgTable("pipeline_stages", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -183,6 +225,9 @@ export const opportunities = pgTable("opportunities", {
 }, (t) => [
   index("opportunities_workspace_stage_idx").on(t.workspaceId, t.stageId),
   index("opportunities_workspace_status_idx").on(t.workspaceId, t.status),
+  // Defense-in-depth backstop for convertLeadToOpportunity's conditional-
+  // update mutex: a lead should never end up with two opportunities.
+  uniqueIndex("opportunities_lead_id_unique").on(t.leadId).where(sql`${t.leadId} is not null`),
 ]);
 
 /* ========== services & billing ========== */
@@ -278,6 +323,12 @@ export const payments = pgTable("payments", {
   index("payments_workspace_billing_month_idx").on(t.workspaceId, t.billingMonth),
   index("payments_invoice_idx").on(t.invoiceId),
   index("payments_subscription_month_idx").on(t.subscriptionId, t.billingMonth),
+  // Authoritative guard behind markSubscriptionCollected's pre-check: only
+  // one non-voided payment per subscription per billing month. A void
+  // frees the month back up for a corrected re-collection.
+  uniqueIndex("payments_subscription_billing_month_unique")
+    .on(t.subscriptionId, t.billingMonth)
+    .where(sql`${t.subscriptionId} is not null and ${t.billingMonth} is not null and ${t.status} != 'voided'`),
 ]);
 
 export const expenseStatus = pgEnum("expense_status", ["active", "archived"]);
@@ -334,19 +385,34 @@ export const calendarEvents = pgTable("calendar_events", {
   index("calendar_events_task_idx").on(t.taskId),
 ]);
 
-export const projectStatus = pgEnum("project_status", ["planning", "active", "on_hold", "completed", "archived"]);
+// "planning", "active", "on_hold", "completed", "archived" are the original
+// 5 values — kept (never removed; Postgres can't drop enum values safely)
+// but no longer assignable going forward. Existing rows were migrated
+// deterministically onto the 11 values below; see the CA Command Center
+// project-stage migration. New rows use the values after "archived".
+export const projectStatus = pgEnum("project_status", [
+  "planning", "active", "on_hold", "completed", "archived",
+  "onboarding", "waiting_on_client", "ready_to_build", "building", "client_review",
+  "revisions", "ready_to_launch", "live", "paused", "at_risk", "closed",
+]);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
-  status: projectStatus("status").notNull().default("planning"),
+  status: projectStatus("status").notNull().default("ready_to_build"),
   ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
   startDate: date("start_date"),
   dueDate: date("due_date"),
   color: text("color"),
+  // What/who this project is blocked on, and the concrete next step — kept
+  // as free-text fields separate from status so status stays a pure
+  // lifecycle value (see CURRENT STAGE / WAITING ON / NEXT ACTION on the
+  // project detail view).
+  waitingOn: text("waiting_on"),
+  nextAction: text("next_action"),
   // Set when status transitions to "completed"; used by goal metrics to
   // attribute a completion to a specific period. Cleared if reopened.
   completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -505,6 +571,43 @@ export const goalProgressUpdates = pgTable("goal_progress_updates", {
   index("goal_progress_updates_goal_created_idx").on(t.goalId, t.createdAt),
 ]);
 
+/* ========== approvals ("Needs Jay") ========== */
+export const approvalType = pgEnum("approval_type", [
+  "pricing", "deployment", "payment_issue", "refund_cancellation",
+  "client_issue", "scope_decision", "security", "blocker", "other",
+]);
+export const approvalStatus = pgEnum("approval_status", ["pending", "approved", "declined", "resolved", "cancelled"]);
+
+/**
+ * A decision request that needs an owner's judgment call — not a filtered
+ * task list. requestedBy is whoever raised it (any workspace member);
+ * resolving (approve/decline/resolve/cancel) is an owner-level action.
+ * History lives in activity_logs, not a second audit trail here.
+ */
+export const approvals = pgTable("approvals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  type: approvalType("type").notNull().default("other"),
+  status: approvalStatus("status").notNull().default("pending"),
+  requestedBy: uuid("requested_by").references(() => profiles.id, { onDelete: "set null" }),
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  riskSummary: text("risk_summary"),
+  requestedAction: text("requested_action"),
+  resolutionNotes: text("resolution_notes"),
+  resolvedBy: uuid("resolved_by").references(() => profiles.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("approvals_workspace_status_idx").on(t.workspaceId, t.status),
+  index("approvals_workspace_created_idx").on(t.workspaceId, t.createdAt),
+]);
+
 /* ========== client portal ========== */
 export const clientPortalRole = pgEnum("client_portal_role", ["client_owner", "client_member", "client_read_only"]);
 export const clientPortalStatus = pgEnum("client_portal_status", ["invited", "active", "suspended", "revoked"]);
@@ -531,6 +634,39 @@ export const clientPortalInvites = pgTable("client_portal_invites", {
   uniqueIndex("client_portal_invites_token_hash_unique").on(t.tokenHash),
   index("client_portal_invites_workspace_client_idx").on(t.workspaceId, t.clientId),
   index("client_portal_invites_workspace_created_idx").on(t.workspaceId, t.createdAt),
+]);
+
+/* ========== client requests ========== */
+export const clientRequestType = pgEnum("client_request_type", [
+  "photo_change", "phone_update", "content_revision", "new_page", "new_service",
+  "bug", "form_issue", "tracking_issue", "technical_problem", "support_request", "other",
+]);
+export const clientRequestStatus = pgEnum("client_request_status", [
+  "new", "triaged", "in_progress", "waiting", "complete", "client_notified",
+]);
+
+/**
+ * What a client asked for — distinct from `tasks`, which is the internal
+ * work required to execute it (see taskId, set once triaged). Submitted by
+ * either a portal client user or a staff member logging it on the client's
+ * behalf; submittedBy is a profiles row either way.
+ */
+export const clientRequests = pgTable("client_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  type: clientRequestType("type").notNull().default("other"),
+  status: clientRequestStatus("status").notNull().default("new"),
+  description: text("description").notNull(),
+  priority: taskPriority("priority").notNull().default("medium"),
+  submittedBy: uuid("submitted_by").references(() => profiles.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  resolutionNotes: text("resolution_notes"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  index("client_requests_workspace_status_idx").on(t.workspaceId, t.status),
+  index("client_requests_workspace_client_idx").on(t.workspaceId, t.clientId),
 ]);
 
 /** A profile's access to one client's portal. One row per (client, profile);

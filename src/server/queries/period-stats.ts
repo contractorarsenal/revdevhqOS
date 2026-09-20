@@ -128,9 +128,11 @@ export async function calculateClientStatsForPeriod(
 
 export type LeadStats = { newLeads: number };
 
-/** Leads created in the period. Matches the new_leads goal metric. Lead
- * conversion has no timestamp column to attribute "converted in period"
- * honestly, so it is deliberately not reported here. */
+/** Sales leads created in the period (client_id IS NULL — client-generated
+ * leads live in the separate client_leads table and are never counted
+ * here). Matches the new_leads goal metric. Lead conversion has no
+ * timestamp column to attribute "converted in period" honestly, so it is
+ * deliberately not reported here. */
 export async function calculateLeadStatsForPeriod(
   dbOrTx: MetricDb,
   workspaceId: string,
@@ -141,7 +143,7 @@ export async function calculateLeadStatsForPeriod(
   const [row] = await dbOrTx
     .select({ n: sql<string>`count(*)` })
     .from(leads)
-    .where(and(eq(leads.workspaceId, workspaceId), gte(leads.createdAt, bounds.start), lt(leads.createdAt, bounds.end)));
+    .where(and(eq(leads.workspaceId, workspaceId), isNull(leads.clientId), gte(leads.createdAt, bounds.start), lt(leads.createdAt, bounds.end)));
   return { newLeads: Number(row?.n ?? 0) };
 }
 

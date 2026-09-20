@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
-import { leads } from "@/lib/db/schema";
+import { clientLeads } from "@/lib/db/schema";
 import { authorizePortal, actionError, type ActionResult } from "@/server/portal-authorize";
 import { logActivity } from "@/server/activity";
 import { assertClientEligibleAssignee } from "@/server/workspace-guards";
@@ -17,8 +17,8 @@ import {
 function revalidateClientLeads(clientId: string) {
   revalidatePath("/portal");
   revalidatePath("/portal/leads");
-  revalidatePath("/leads");
   revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}/leads`);
 }
 
 /** Every mutation's ownership check — a leadId belonging to another client
@@ -26,8 +26,8 @@ function revalidateClientLeads(clientId: string) {
 async function assertClientOwnedLeadRow(workspaceId: string, clientId: string, leadId: string) {
   const [row] = await db
     .select()
-    .from(leads)
-    .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId)))
+    .from(clientLeads)
+    .where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId)))
     .limit(1);
   if (!row) throw new Error("Lead not found.");
   return row;
@@ -35,7 +35,8 @@ async function assertClientOwnedLeadRow(workspaceId: string, clientId: string, l
 
 /** Every mutation here re-derives workspaceId/clientId from the SERVER
  * SESSION (authorizePortal → requireClientPortalUser), never from the
- * leadId's caller-supplied context. */
+ * leadId's caller-supplied context. None of these ever touch clientId —
+ * a client lead's client association cannot be changed by any action. */
 
 export async function updateClientLeadStatus(leadId: string, input: unknown): Promise<ActionResult> {
   try {
@@ -46,11 +47,11 @@ export async function updateClientLeadStatus(leadId: string, input: unknown): Pr
 
     const stamp = clientLeadStatusTimestamp(status, new Date());
 
-    await db.update(leads).set({ status, ...stamp }).where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId)));
+    await db.update(clientLeads).set({ status, ...stamp }).where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId)));
 
     await logActivity({
-      workspaceId, actorId: ctx.user.id, action: "lead.status_changed",
-      entityType: "lead", entityId: leadId, leadId, clientId,
+      workspaceId, actorId: ctx.user.id, action: "client_lead.status_changed",
+      entityType: "client_lead", entityId: leadId, clientId,
       metadata: { status },
     });
     revalidateClientLeads(clientId);
@@ -68,11 +69,11 @@ export async function assignClientLead(leadId: string, input: unknown): Promise<
     const { profileId } = clientLeadAssignSchema.parse(input);
     await assertClientEligibleAssignee(workspaceId, clientId, profileId);
 
-    await db.update(leads).set({ ownerId: profileId ?? null }).where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId)));
+    await db.update(clientLeads).set({ ownerId: profileId ?? null }).where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId)));
 
     await logActivity({
-      workspaceId, actorId: ctx.user.id, action: "lead.assigned_changed",
-      entityType: "lead", entityId: leadId, leadId, clientId,
+      workspaceId, actorId: ctx.user.id, action: "client_lead.assigned_changed",
+      entityType: "client_lead", entityId: leadId, clientId,
       metadata: { assigned: Boolean(profileId) },
     });
     revalidateClientLeads(clientId);
@@ -90,13 +91,13 @@ export async function updateClientLeadEstimate(leadId: string, input: unknown): 
     const { estimatedValue } = clientLeadEstimateSchema.parse(input);
 
     await db
-      .update(leads)
+      .update(clientLeads)
       .set({ estimatedValue: estimatedValue != null ? String(estimatedValue) : null })
-      .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId)));
+      .where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId)));
 
     await logActivity({
-      workspaceId, actorId: ctx.user.id, action: "lead.estimated_value_updated",
-      entityType: "lead", entityId: leadId, leadId, clientId,
+      workspaceId, actorId: ctx.user.id, action: "client_lead.estimated_value_updated",
+      entityType: "client_lead", entityId: leadId, clientId,
     });
     revalidateClientLeads(clientId);
     return { ok: true };
@@ -121,13 +122,13 @@ export async function updateClientLeadClosedValue(leadId: string, input: unknown
     }
 
     await db
-      .update(leads)
+      .update(clientLeads)
       .set({ closedValue: closedValue != null ? String(closedValue) : null })
-      .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId)));
+      .where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId)));
 
     await logActivity({
-      workspaceId, actorId: ctx.user.id, action: "lead.closed_value_updated",
-      entityType: "lead", entityId: leadId, leadId, clientId,
+      workspaceId, actorId: ctx.user.id, action: "client_lead.closed_value_updated",
+      entityType: "client_lead", entityId: leadId, clientId,
     });
     revalidateClientLeads(clientId);
     return { ok: true };
@@ -146,12 +147,12 @@ export async function addClientLeadNote(leadId: string, input: unknown): Promise
     const entry = `[${format(new Date(), "MMM d, yyyy h:mm a")}] ${ctx.user.name}: ${note}`;
     const nextNotes = existing.notes ? `${existing.notes}\n\n${entry}` : entry;
 
-    await db.update(leads).set({ notes: nextNotes }).where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId)));
+    await db.update(clientLeads).set({ notes: nextNotes }).where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId)));
 
     await logActivity({
       // Never log the note's own content — just that one was added.
-      workspaceId, actorId: ctx.user.id, action: "lead.note_added",
-      entityType: "lead", entityId: leadId, leadId, clientId,
+      workspaceId, actorId: ctx.user.id, action: "client_lead.note_added",
+      entityType: "client_lead", entityId: leadId, clientId,
     });
     revalidateClientLeads(clientId);
     return { ok: true };

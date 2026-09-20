@@ -37,6 +37,22 @@ export const workspaceSchema = z.object({
   timezone: z.string().trim().min(1).max(64).default("UTC"),
 });
 
+export const WORKSPACE_ROLES = ["owner", "admin", "manager", "member", "viewer"] as const;
+
+export const changePasswordSchema = z.object({
+  password: z.string().min(8, "Password must be at least 8 characters").max(72),
+});
+
+export const inviteMemberSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+  name: z.string().trim().min(1, "Name is required").max(120),
+  role: z.enum(WORKSPACE_ROLES),
+});
+
+export const updateMemberRoleSchema = z.object({
+  role: z.enum(WORKSPACE_ROLES),
+});
+
 export const clientSchema = z.object({
   name: z.string().trim().min(1, "Company name is required").max(200),
   website: optionalTrimmed,
@@ -63,7 +79,6 @@ export const contactSchema = z.object({
 
 export const leadSchema = z.object({
   company: z.string().trim().min(1, "Company is required").max(200),
-  clientId: uuidOrNull,
   contactName: optionalTrimmed,
   email: optionalTrimmed,
   phone: optionalTrimmed,
@@ -221,14 +236,24 @@ export const taskSchema = z.object({
   allDay: z.coerce.boolean().default(false),
 });
 
+// The original 5 values ("planning", "active", "on_hold", "completed",
+// "archived") are retired — kept in the database enum (existing rows were
+// migrated off them) but no longer assignable through the app.
+export const PROJECT_STATUSES = [
+  "onboarding", "waiting_on_client", "ready_to_build", "building", "client_review",
+  "revisions", "ready_to_launch", "live", "paused", "at_risk", "closed",
+] as const;
+
 export const projectSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
   description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
-  status: z.enum(["planning", "active", "on_hold", "completed", "archived"]).default("planning"),
+  status: z.enum(PROJECT_STATUSES).default("ready_to_build"),
   ownerId: uuidOrNull,
   clientId: uuidOrNull,
   startDate: optionalDate,
   dueDate: optionalDate,
+  waitingOn: optionalTrimmed,
+  nextAction: optionalTrimmed,
   color: z
     .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
     .transform((v) => (v === "" ? null : v))
@@ -371,4 +396,57 @@ export const clientPortalSettingsSchema = z.object({
     .transform((v) => (v === "" ? null : v))
     .nullable()
     .optional(),
+});
+
+/* ========== approvals ("Needs Jay") ========== */
+export const APPROVAL_TYPES = [
+  "pricing", "deployment", "payment_issue", "refund_cancellation",
+  "client_issue", "scope_decision", "security", "blocker", "other",
+] as const;
+
+export const createApprovalSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(200),
+  description: optionalTrimmed,
+  type: z.enum(APPROVAL_TYPES).default("other"),
+  riskSummary: optionalTrimmed,
+  requestedAction: optionalTrimmed,
+  clientId: uuidOrNull,
+  projectId: uuidOrNull,
+  leadId: uuidOrNull,
+  taskId: uuidOrNull,
+});
+
+export const resolveApprovalSchema = z.object({
+  status: z.enum(["approved", "declined", "resolved", "cancelled"]),
+  resolutionNotes: optionalTrimmed,
+});
+
+/* ========== client requests ========== */
+export const CLIENT_REQUEST_TYPES = [
+  "photo_change", "phone_update", "content_revision", "new_page", "new_service",
+  "bug", "form_issue", "tracking_issue", "technical_problem", "support_request", "other",
+] as const;
+
+export const CLIENT_REQUEST_STATUSES = ["new", "triaged", "in_progress", "waiting", "complete", "client_notified"] as const;
+
+export const clientRequestSchema = z.object({
+  clientId: z.string().uuid("Select a client"),
+  type: z.enum(CLIENT_REQUEST_TYPES).default("other"),
+  description: z.string().trim().min(1, "Description is required").max(3000),
+  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+});
+
+/** Portal submission never accepts a clientId — it's derived from the
+ * caller's own portal session server-side (see authorizePortal). */
+export const portalClientRequestSchema = clientRequestSchema.omit({ clientId: true });
+
+export const updateClientRequestStatusSchema = z.object({
+  status: z.enum(CLIENT_REQUEST_STATUSES),
+  resolutionNotes: optionalTrimmed,
+});
+
+export const triageClientRequestSchema = z.object({
+  taskTitle: z.string().trim().min(1, "Task title is required").max(200),
+  assigneeId: uuidOrNull,
+  dueDate: optionalDate,
 });

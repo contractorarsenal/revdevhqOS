@@ -27,7 +27,7 @@ export const CLIENT_LEAD_STATUS_LABEL: Record<ClientLeadStatus, string> = {
 
 /** Board/status-badge color per status — text always accompanies color. */
 export const CLIENT_LEAD_STATUS_STYLE: Record<ClientLeadStatus, { text: string; badge: string; dot: string }> = {
-  new: { text: "text-indigo-700 dark:text-indigo-400", badge: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400", dot: "bg-indigo-500" },
+  new: { text: "text-blue-700 dark:text-blue-400", badge: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400", dot: "bg-blue-500" },
   contacted: { text: "text-amber-700 dark:text-amber-400", badge: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400", dot: "bg-amber-500" },
   estimate_scheduled: { text: "text-sky-700 dark:text-sky-400", badge: "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-400", dot: "bg-sky-500" },
   won: { text: "text-emerald-700 dark:text-emerald-400", badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400", dot: "bg-emerald-500" },
@@ -98,16 +98,3 @@ export function clientLeadStatusTimestamp(
   }
 }
 
-/** Maps a client-facing status onto the legacy 6-value internal editable
- * set, for the one place a staff member might open a client-generated lead
- * in the internal (agency-prospect-oriented) edit form: "estimate_scheduled"
- * reads as "contacted" (an active conversation), "won" as "qualified"
- * (further along than open, since "converted" specifically means "became a
- * Contractor Arsenal client", which a client-generated lead never is). This
- * is presentation-only — it never writes back estimate_scheduled_at/won_at
- * and does not change the stored status. */
-export function toInternalEditableStatus(status: string): "new" | "contacted" | "qualified" | "unqualified" | "converted" | "lost" {
-  if (status === "estimate_scheduled") return "contacted";
-  if (status === "won") return "qualified";
-  return status as "new" | "contacted" | "qualified" | "unqualified" | "converted" | "lost";
-}

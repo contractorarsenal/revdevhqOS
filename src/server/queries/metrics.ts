@@ -3,7 +3,7 @@ import { and, eq, gte, isNull, lt, or, sql, inArray, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   subscriptions, invoices, payments, clients, opportunities, pipelineStages, tasks,
-  activityLogs, profiles,
+  activityLogs, profiles, leads, clientLeads, projects,
 } from "@/lib/db/schema";
 import {
   calculateMrr, calculateArr, outstandingRevenue, pastDueRevenue,
@@ -231,4 +231,51 @@ export async function getAttentionQueue(workspaceId: string) {
       .limit(5),
   ]);
   return { overdueInvoices, renewals, overdueTasks };
+}
+
+/**
+ * Operational counts for the dashboard's top metric row. "Open leads" reads
+ * the `leads` table (Contractor Arsenal sales prospects only — client_id is
+ * always null there now) and "client leads today" reads the separate
+ * `client_leads` table — two physically distinct funnels that must never be
+ * blended into one total. "Waiting on client" uses the existing task_status
+ * "waiting" value — the one signal already in the schema for "blocked on an
+ * external party".
+ */
+export async function getOperationalMetrics(workspaceId: string, timezone: string) {
+  const { dayStart } = zonedBoundaries(timezone);
+  const dayEnd = new Date(dayStart.getTime() + 86400000);
+
+  const [openLeadsRow, activeProjectsRow, waitingRow, clientLeadsTodayRow] = await Promise.all([
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(leads)
+      .where(and(eq(leads.workspaceId, workspaceId), isNull(leads.clientId), inArray(leads.status, ["new", "contacted", "qualified"]))),
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(projects)
+      .where(and(
+        eq(projects.workspaceId, workspaceId),
+        inArray(projects.status, ["ready_to_build", "building", "client_review", "revisions", "ready_to_launch"])
+      )),
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, workspaceId), eq(tasks.status, "waiting"))),
+    db
+      .select({ n: sql<string>`count(*)` })
+      .from(clientLeads)
+      .where(and(
+        eq(clientLeads.workspaceId, workspaceId),
+        gte(clientLeads.receivedAt, dayStart),
+        lt(clientLeads.receivedAt, dayEnd)
+      )),
+  ]);
+
+  return {
+    openLeads: Number(openLeadsRow[0]?.n ?? 0),
+    activeProjects: Number(activeProjectsRow[0]?.n ?? 0),
+    waitingOnClient: Number(waitingRow[0]?.n ?? 0),
+    clientLeadsToday: Number(clientLeadsTodayRow[0]?.n ?? 0),
+  };
 }

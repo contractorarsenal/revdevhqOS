@@ -43,7 +43,7 @@ beforeAll(async () => {
     );
     CREATE TABLE invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, status text NOT NULL DEFAULT 'open', total numeric(12,2) NOT NULL DEFAULT 0, amount_paid numeric(12,2) NOT NULL DEFAULT 0, billing_month date, issue_date date);
     CREATE TABLE expenses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, name text NOT NULL, category text NOT NULL DEFAULT 'misc', amount numeric(12,2) NOT NULL, expense_date date NOT NULL, frequency text NOT NULL DEFAULT 'one_time', status text NOT NULL DEFAULT 'active');
-    CREATE TABLE leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE leads (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, client_id uuid, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE tasks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, completed_at timestamptz);
     CREATE TABLE projects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, completed_at timestamptz);
     CREATE TABLE pipeline_stages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL);

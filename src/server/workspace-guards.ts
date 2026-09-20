@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 import { db as appDb } from "@/lib/db";
 import {
-  clients, leads, opportunities, tasks, pipelineStages, invoices, workspaceMembers, projects,
+  clients, leads, clientLeads, opportunities, tasks, pipelineStages, invoices, workspaceMembers, projects,
   clientPortalMemberships,
 } from "@/lib/db/schema";
 
@@ -100,19 +100,19 @@ export async function assertWorkspaceProject(workspaceId: string, projectId: Id)
 }
 
 /**
- * Client-portal ownership guard: a lead must belong to BOTH the caller's
- * workspace AND their specific client — never workspace alone. This is the
- * one check that makes cross-client lead access structurally impossible for
- * every portal lead mutation. Throws a generic "not found" (never
- * distinguishing "wrong workspace" from "wrong client" from "doesn't
- * exist") so a client can't probe for other clients' lead ids.
+ * Client-portal ownership guard: a client lead must belong to BOTH the
+ * caller's workspace AND their specific client — never workspace alone.
+ * This is the one check that makes cross-client lead access structurally
+ * impossible for every portal lead mutation. Throws a generic "not found"
+ * (never distinguishing "wrong workspace" from "wrong client" from
+ * "doesn't exist") so a client can't probe for other clients' lead ids.
  */
 export async function assertClientOwnedLead(workspaceId: string, clientId: string, leadId: Id): Promise<void> {
   if (!leadId) throw new Error("Lead not found.");
   const [row] = await guardDeps.db
-    .select({ id: leads.id })
-    .from(leads)
-    .where(and(eq(leads.id, leadId), eq(leads.workspaceId, workspaceId), eq(leads.clientId, clientId), isNull(leads.archivedAt)))
+    .select({ id: clientLeads.id })
+    .from(clientLeads)
+    .where(and(eq(clientLeads.id, leadId), eq(clientLeads.workspaceId, workspaceId), eq(clientLeads.clientId, clientId), isNull(clientLeads.archivedAt)))
     .limit(1);
   if (!row) throw new Error("Lead not found.");
 }
