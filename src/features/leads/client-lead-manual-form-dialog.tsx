@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
+import { todayInTimezone } from "@/lib/date-tz";
 import { clientLeadManualEntrySchema } from "@/lib/validation";
 import { createManualClientLead } from "@/server/actions/leads";
 import { CLIENT_LEAD_STATUSES, CLIENT_LEAD_STATUS_LABEL, LEAD_SOURCES } from "@/lib/leads-client";
@@ -39,7 +40,7 @@ export function ClientLeadManualFormDialog({
       form.reset({
         clientId: fixedClientId ?? "",
         name: "", email: "", phone: "", requestedService: "",
-        source: "Manual", receivedAt: new Date().toISOString().slice(0, 10),
+        source: "Manual", receivedOn: todayInTimezone("America/Los_Angeles"),
         status: "new", estimatedValue: "",
       });
     }
@@ -50,7 +51,8 @@ export function ClientLeadManualFormDialog({
     startTransition(async () => {
       const result = await createManualClientLead(values);
       if (!result.ok) return form.setError("root", { message: result.error });
-      toast.success("Lead created — it's now visible in the client's portal");
+      if (result.data?.duplicate) toast.message("That submission was already logged");
+      else toast.success("Lead created — it's now visible in the client's portal");
       onOpenChange(false);
       router.refresh();
     });
@@ -90,8 +92,8 @@ export function ClientLeadManualFormDialog({
           </div>
           <div className="space-y-1">
             <Label>Date received *</Label>
-            <Input type="date" {...form.register("receivedAt")} />
-            {form.formState.errors.receivedAt && <p className="text-xs text-destructive">{form.formState.errors.receivedAt.message}</p>}
+            <Input type="date" {...form.register("receivedOn")} />
+            {form.formState.errors.receivedOn && <p className="text-xs text-destructive">{form.formState.errors.receivedOn.message}</p>}
           </div>
           <div className="space-y-1">
             <Label>Status</Label>

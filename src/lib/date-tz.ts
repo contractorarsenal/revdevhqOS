@@ -104,3 +104,46 @@ export function formatFullDate(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
+
+/** Business calendar for Command Center client-lead dates. Reporting windows
+ * elsewhere already take the workspace timezone; client-lead *display* of a
+ * date-only value is fixed to Pacific so a YYYY-MM-DD never shifts a day. */
+export const CLIENT_LEAD_BUSINESS_TIMEZONE = "America/Los_Angeles";
+
+/** "Sep 22, 2026" from a YYYY-MM-DD string. Uses UTC so the calendar day
+ * cannot move when the runtime zone is west of UTC. */
+export function formatCalendarDateLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+  });
+}
+
+/**
+ * Business calendar day for a client lead.
+ * - `receivedOn` (Postgres date / YYYY-MM-DD) wins and is not re-parsed as an instant.
+ * - Otherwise the calendar day is `receivedAt` in America/Los_Angeles.
+ */
+export function clientLeadBusinessDate(input: {
+  receivedOn?: string | Date | null;
+  receivedAt: Date | string;
+}): { date: string; time: string | null } {
+  const dateOnly = toDateOnlyString(input.receivedOn);
+  if (dateOnly) return { date: dateOnly, time: null };
+  const instant = input.receivedAt instanceof Date ? input.receivedAt : new Date(input.receivedAt);
+  const zoned = formatInTimezone(instant, CLIENT_LEAD_BUSINESS_TIMEZONE);
+  return { date: zoned.date, time: zoned.time };
+}
+
+/** Label for client-lead "date received". Date-only rows have no clock time.
+ * Timestamp rows append the Pacific time. Never uses date-fns local `format`. */
+export function clientLeadReceivedLabel(
+  receivedOn: string | Date | null | undefined,
+  receivedAt: Date | string,
+  opts?: { withTime?: boolean },
+): string {
+  const business = clientLeadBusinessDate({ receivedOn, receivedAt });
+  const label = formatCalendarDateLabel(business.date);
+  if (opts?.withTime && business.time) return `${label}, ${formatTimeLabel(business.time)}`;
+  return label;
+}

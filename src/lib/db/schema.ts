@@ -174,6 +174,20 @@ export const clientLeads = pgTable("client_leads", {
   estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
   closedValue: numeric("closed_value", { precision: 12, scale: 2 }),
   ownerId: uuid("owner_id").references(() => profiles.id, { onDelete: "set null" }),
+  // Stable id from the source system (Gmail message id, form submission id).
+  // Null for manual entries that have no external id. Partial-unique below.
+  externalMessageId: text("external_message_id"),
+  // manual | website | webhook | api | gmail | form — how the row was ingested.
+  ingestionSource: text("ingestion_source"),
+  // Caller-supplied fallback key when there is no stable message id.
+  // Unique per workspace+client, not globally, so two clients can share a key shape.
+  dedupeKey: text("dedupe_key"),
+  // Calendar date when the source only has YYYY-MM-DD. Never derived by
+  // parsing that string with `new Date("YYYY-MM-DD")` (UTC midnight), which
+  // shifts the day backward in America/Los_Angeles.
+  receivedOn: date("received_on"),
+  // True instant (webhook time or insert time), stored as timestamptz / UTC.
+  // Not a stand-in for a date-only value.
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
   estimateScheduledAt: timestamp("estimate_scheduled_at", { withTimezone: true }),
@@ -190,6 +204,12 @@ export const clientLeads = pgTable("client_leads", {
   index("client_leads_workspace_client_idx").on(t.workspaceId, t.clientId),
   index("client_leads_workspace_status_idx").on(t.workspaceId, t.status),
   index("client_leads_workspace_received_idx").on(t.workspaceId, t.receivedAt),
+  uniqueIndex("client_leads_workspace_external_message_unique")
+    .on(t.workspaceId, t.externalMessageId)
+    .where(sql`${t.externalMessageId} is not null`),
+  uniqueIndex("client_leads_workspace_client_dedupe_key_unique")
+    .on(t.workspaceId, t.clientId, t.dedupeKey)
+    .where(sql`${t.dedupeKey} is not null`),
 ]);
 
 export const pipelineStages = pgTable("pipeline_stages", {

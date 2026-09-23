@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { format } from "date-fns";
 import { ChevronLeft, Plus, Users } from "lucide-react";
+import { clientLeadReceivedLabel } from "@/lib/date-tz";
 import type { ClientLeadRow } from "@/server/queries/client-leads";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -47,7 +47,7 @@ export function ClientLeadsInternalView({ client, leads }: { client: { id: strin
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-semibold">{l.name}</p>
                 <p className="truncate text-[11px] text-muted-foreground">
-                  {[l.email, l.phone].filter(Boolean).join(" · ") || "No contact info"} · {format(new Date(l.receivedAt), "MMM d, yyyy")}
+                  {[l.email, l.phone].filter(Boolean).join(" · ") || "No contact info"} · {clientLeadReceivedLabel(l.receivedOn, l.receivedAt)}
                 </p>
               </div>
               {l.estimatedValue && <FinancialAmount value={l.estimatedValue} className="text-[12px]" />}

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
+import { clientLeadReceivedLabel } from "@/lib/date-tz";
 import {
   DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
@@ -221,7 +222,7 @@ function LeadCard({ lead, onOpen, dragging }: { lead: ClientLeadRow; onOpen: () 
         <ClientLeadStatusBadge status={lead.status as ClientLeadStatus} />
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-        <span>{format(new Date(lead.receivedAt), "MMM d, h:mm a")}</span>
+        <span>{clientLeadReceivedLabel(lead.receivedOn, lead.receivedAt, { withTime: true })}</span>
         {lead.source && <span>· {lead.source}</span>}
         {lead.assignedToName && <span>· {lead.assignedToName}</span>}
         {lead.estimatedValue && <span className="ml-auto font-semibold text-foreground">{formatMoney(lead.estimatedValue)}</span>}

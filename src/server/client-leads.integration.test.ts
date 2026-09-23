@@ -28,7 +28,8 @@ vi.mock("server-only", () => ({}));
 
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { toDateOnlyString, clientLeadReceivedLabel, formatInTimezone } from "@/lib/date-tz";
 
 // Route the global `db` (used by createClientLead + logActivity) at the
 // embedded instance. The getter reads `holder.db`, set once in beforeAll.
@@ -118,6 +119,10 @@ beforeAll(async () => {
       estimated_value numeric(12,2),
       closed_value numeric(12,2),
       owner_id uuid,
+      external_message_id text,
+      ingestion_source text,
+      dedupe_key text,
+      received_on date,
       received_at timestamptz NOT NULL DEFAULT now(),
       last_contacted_at timestamptz,
       estimate_scheduled_at timestamptz,
@@ -129,6 +134,12 @@ beforeAll(async () => {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE UNIQUE INDEX client_leads_workspace_external_message_unique
+      ON client_leads (workspace_id, external_message_id)
+      WHERE external_message_id IS NOT NULL;
+    CREATE UNIQUE INDEX client_leads_workspace_client_dedupe_key_unique
+      ON client_leads (workspace_id, client_id, dedupe_key)
+      WHERE dedupe_key IS NOT NULL;
     INSERT INTO profiles (id, name) VALUES
       ('${OWNER_F}', 'Fiona Owner'),
       ('${ASSIGNEE_1}', 'Aaron Member'),
@@ -194,6 +205,99 @@ describe("createClientLead — the single canonical creation path [9, 32]", () =
     expect(logs[0].entityType).toBe("client_lead");
     expect(logs[0].leadId).toBeNull();
     expect(logs[0].metadata).toMatchObject({ source: "Referral", via: "api" });
+  });
+
+  it("returns the existing row when the same external_message_id is ingested again", async () => {
+    const first = await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_CREATE, name: "Lynda Laymon",
+      email: "lynda@example.com", source: "Website",
+      externalMessageId: "gmail-msg-lynda-1", ingestionSource: "gmail",
+      createdVia: "api", actorId: null,
+    });
+    const second = await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_CREATE, name: "Lynda Laymon",
+      email: "lynda@example.com", source: "Website",
+      externalMessageId: "gmail-msg-lynda-1", ingestionSource: "gmail",
+      createdVia: "api", actorId: null,
+    });
+    expect(second).toEqual({ id: first.id, duplicate: true });
+    const rows = await db.select({ id: clientLeads.id }).from(clientLeads)
+      .where(and(eq(clientLeads.workspaceId, WS1), eq(clientLeads.externalMessageId, "gmail-msg-lynda-1")));
+    expect(rows).toHaveLength(1);
+    const logs = await db.select().from(activityLogs).where(eq(activityLogs.entityId, first.id));
+    expect(logs).toHaveLength(1);
+  });
+
+  it("the partial unique index rejects a second row with the same external_message_id even if the service pre-check is bypassed", async () => {
+    await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_CREATE, name: "Indexed",
+      source: "Website", externalMessageId: "gmail-msg-index",
+      createdVia: "api", actorId: null,
+    });
+    await expect(client.exec(
+      `INSERT INTO client_leads (workspace_id, client_id, name, external_message_id) VALUES ('${WS1}', '${CLIENT_CREATE}', 'Dup', 'gmail-msg-index')`,
+    )).rejects.toThrow(/duplicate|unique/i);
+  });
+
+  it("onConflictDoNothing targets the partial unique indexes and inserts nothing", async () => {
+    const base = {
+      workspaceId: WS1, clientId: CLIENT_CREATE, name: "Conflict", source: "Website",
+      ingestionSource: "gmail",
+    };
+    await db.insert(clientLeads).values({ ...base, externalMessageId: "gmail-conflict" });
+    const externalAgain = await db.insert(clientLeads).values({ ...base, name: "Conflict 2", externalMessageId: "gmail-conflict" })
+      .onConflictDoNothing({
+        target: [clientLeads.workspaceId, clientLeads.externalMessageId],
+        where: sql`${clientLeads.externalMessageId} is not null`,
+      })
+      .returning({ id: clientLeads.id });
+    expect(externalAgain).toHaveLength(0);
+
+    await db.insert(clientLeads).values({ ...base, name: "Dedupe", dedupeKey: "form-1" });
+    const dedupeAgain = await db.insert(clientLeads).values({ ...base, name: "Dedupe 2", dedupeKey: "form-1" })
+      .onConflictDoNothing({
+        target: [clientLeads.workspaceId, clientLeads.clientId, clientLeads.dedupeKey],
+        where: sql`${clientLeads.dedupeKey} is not null`,
+      })
+      .returning({ id: clientLeads.id });
+    expect(dedupeAgain).toHaveLength(0);
+  });
+
+  it("returns the existing row for the same workspace+client dedupe_key and allows that key on another client", async () => {
+    const first = await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_A, name: "Form Submitter",
+      source: "Website", dedupeKey: "form:roof:2026-09-22", ingestionSource: "form",
+      createdVia: "webhook", actorId: null,
+    });
+    const again = await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_A, name: "Form Submitter",
+      source: "Website", dedupeKey: "form:roof:2026-09-22",
+      createdVia: "webhook", actorId: null,
+    });
+    expect(again).toEqual({ id: first.id, duplicate: true });
+
+    const otherClient = await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_B, name: "Other Client Submitter",
+      source: "Website", dedupeKey: "form:roof:2026-09-22",
+      createdVia: "webhook", actorId: null,
+    });
+    expect(otherClient.duplicate).toBe(false);
+    expect(otherClient.id).not.toBe(first.id);
+  });
+
+  it("stores a date-only receivedOn without turning it into UTC midnight", async () => {
+    const { id } = await createClientLead({
+      workspaceId: WS1, clientId: CLIENT_CREATE, name: "Joseph G McCarthy",
+      source: "Website", receivedOn: "2026-09-22", createdVia: "manual", actorId: OWNER_F,
+    });
+    const [row] = await db.select().from(clientLeads).where(eq(clientLeads.id, id));
+    expect(toDateOnlyString(row.receivedOn)).toBe("2026-09-22");
+    expect(row.receivedAt.toISOString()).not.toBe("2026-09-22T00:00:00.000Z");
+    expect(clientLeadReceivedLabel(row.receivedOn, row.receivedAt)).toBe("Sep 22, 2026");
+    // The old parse is the bug: UTC midnight of that calendar date is still Sep 21 in Pacific.
+    expect(formatInTimezone(new Date("2026-09-22"), "America/Los_Angeles").date).toBe("2026-09-21");
+    const [{ n }] = await db.select({ n: sql<string>`count(*)` }).from(clientLeads).where(eq(clientLeads.id, id));
+    expect(Number(n)).toBe(1);
   });
 });
 
