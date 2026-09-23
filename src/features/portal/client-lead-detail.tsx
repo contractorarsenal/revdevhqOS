@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { clientLeadReceivedLabel } from "@/lib/date-tz";
 import { Phone, MessageSquare, Mail, Save } from "lucide-react";
 import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,7 @@ function ClientLeadDetailBody({
         <dl className="space-y-1 text-[12.5px]">
           <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Service</dt><dd>{lead.requestedService ?? "—"}</dd></div>
           <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Source</dt><dd>{lead.source ?? "—"}</dd></div>
-          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Received</dt><dd>{format(new Date(lead.receivedAt), "MMM d, yyyy h:mm a")}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Received</dt><dd>{clientLeadReceivedLabel(lead.receivedOn, lead.receivedAt, { withTime: true })}</dd></div>
         </dl>
       </div>
 

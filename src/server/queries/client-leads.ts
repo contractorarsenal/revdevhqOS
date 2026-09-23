@@ -19,6 +19,7 @@ const CLIENT_LEAD_COLUMNS = {
   requestedService: clientLeads.requestedService,
   source: clientLeads.source,
   status: clientLeads.status,
+  receivedOn: clientLeads.receivedOn,
   receivedAt: clientLeads.receivedAt,
   contactedAt: clientLeads.lastContactedAt,
   estimateScheduledAt: clientLeads.estimateScheduledAt,

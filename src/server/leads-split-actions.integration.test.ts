@@ -10,8 +10,9 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { clientLeads } from "@/lib/db/schema";
+import { toDateOnlyString, clientLeadReceivedLabel } from "@/lib/date-tz";
 
 const revalidatePath = vi.fn();
 const revalidateGoalPaths = vi.fn();
@@ -114,6 +115,10 @@ beforeAll(async () => {
       estimated_value numeric(12,2),
       closed_value numeric(12,2),
       owner_id uuid,
+      external_message_id text,
+      ingestion_source text,
+      dedupe_key text,
+      received_on date,
       received_at timestamptz NOT NULL DEFAULT now(),
       last_contacted_at timestamptz,
       estimate_scheduled_at timestamptz,
@@ -125,6 +130,12 @@ beforeAll(async () => {
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE UNIQUE INDEX client_leads_workspace_external_message_unique
+      ON client_leads (workspace_id, external_message_id)
+      WHERE external_message_id IS NOT NULL;
+    CREATE UNIQUE INDEX client_leads_workspace_client_dedupe_key_unique
+      ON client_leads (workspace_id, client_id, dedupe_key)
+      WHERE dedupe_key IS NOT NULL;
     CREATE TABLE activity_logs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), workspace_id uuid NOT NULL, actor_id uuid,
       action text NOT NULL, entity_type text NOT NULL, entity_id uuid, client_id uuid,
@@ -177,7 +188,7 @@ describe("createManualClientLead — staff logging a lead on a client's behalf",
   it("requires admin — a member is rejected", async () => {
     setCtx("member");
     const result = await createManualClientLead({
-      clientId: CLIENT1, name: "Jane Homeowner", source: "Manual", receivedAt: "2026-07-01", status: "new",
+      clientId: CLIENT1, name: "Jane Homeowner", source: "Manual", receivedOn: "2026-07-01", status: "new",
     });
     expect(result.ok).toBe(false);
   });
@@ -185,7 +196,7 @@ describe("createManualClientLead — staff logging a lead on a client's behalf",
   it("writes to client_leads, never to leads", async () => {
     setCtx("admin");
     const result = await createManualClientLead({
-      clientId: CLIENT1, name: "Jane Homeowner", source: "Manual", receivedAt: "2026-07-01", status: "new",
+      clientId: CLIENT1, name: "Jane Homeowner", source: "Manual", receivedOn: "2026-07-01", status: "new",
     });
     expect(result.ok).toBe(true);
     const salesRows = await client.query(`SELECT * FROM leads`);
@@ -193,19 +204,45 @@ describe("createManualClientLead — staff logging a lead on a client's behalf",
     const db = (globalThis as Record<string, unknown>).__testDb as ReturnType<typeof drizzle>;
     const [clientLeadRow] = await db.select().from(clientLeads).where(eq(clientLeads.clientId, CLIENT1));
     expect(clientLeadRow.name).toBe("Jane Homeowner");
+    expect(toDateOnlyString(clientLeadRow.receivedOn)).toBe("2026-07-01");
+    expect(clientLeadRow.receivedAt.toISOString()).not.toBe("2026-07-01T00:00:00.000Z");
+    expect(clientLeadReceivedLabel(clientLeadRow.receivedOn, clientLeadRow.receivedAt)).toBe("Jul 1, 2026");
+    expect(clientLeadRow.ingestionSource).toBe("manual");
+  });
+
+  it("returns the existing lead when the same external_message_id is submitted again", async () => {
+    setCtx("admin");
+    const first = await createManualClientLead({
+      clientId: CLIENT1, name: "Lynda Laymon", source: "Website", receivedOn: "2026-09-22", status: "new",
+      externalMessageId: "gmail-msg-1", ingestionSource: "gmail",
+    });
+    const second = await createManualClientLead({
+      clientId: CLIENT1, name: "Lynda Laymon", source: "Website", receivedOn: "2026-09-22", status: "new",
+      externalMessageId: "gmail-msg-1", ingestionSource: "gmail",
+    });
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.data?.duplicate).toBe(false);
+    expect(second.data).toEqual({ id: first.data?.id, duplicate: true });
+    const db = (globalThis as Record<string, unknown>).__testDb as ReturnType<typeof drizzle>;
+    const rows = await db.select().from(clientLeads).where(and(eq(clientLeads.workspaceId, WS1), eq(clientLeads.externalMessageId, "gmail-msg-1")));
+    expect(rows).toHaveLength(1);
+    expect(toDateOnlyString(rows[0].receivedOn)).toBe("2026-09-22");
+    expect(clientLeadReceivedLabel(rows[0].receivedOn, rows[0].receivedAt)).toBe("Sep 22, 2026");
   });
 
   it("rejects a client that belongs to a different workspace (workspace isolation)", async () => {
     setCtx("admin");
     const result = await createManualClientLead({
-      clientId: CLIENT_OTHER_WS, name: "Cross Workspace", source: "Manual", receivedAt: "2026-07-01", status: "new",
+      clientId: CLIENT_OTHER_WS, name: "Cross Workspace", source: "Manual", receivedOn: "2026-07-01", status: "new",
     });
     expect(result.ok).toBe(false);
   });
 
   it("does not trigger the sales new_leads goal metric revalidation", async () => {
     setCtx("admin");
-    await createManualClientLead({ clientId: CLIENT1, name: "No Goal Impact", source: "Manual", receivedAt: "2026-07-01", status: "new" });
+    await createManualClientLead({ clientId: CLIENT1, name: "No Goal Impact", source: "Manual", receivedOn: "2026-07-01", status: "new" });
     expect(revalidateGoalPaths).not.toHaveBeenCalled();
   });
 });
@@ -215,7 +252,7 @@ describe("sales and client leads never cross-contaminate each other's counts", (
     setCtx("member");
     await createLead({ company: "Sales Prospect Co", status: "new" });
     setCtx("admin");
-    await createManualClientLead({ clientId: CLIENT1, name: "Client Lead Person", source: "Manual", receivedAt: "2026-07-01", status: "new" });
+    await createManualClientLead({ clientId: CLIENT1, name: "Client Lead Person", source: "Manual", receivedOn: "2026-07-01", status: "new" });
 
     const salesLeads = await listLeads(WS1);
     expect(salesLeads).toHaveLength(1);

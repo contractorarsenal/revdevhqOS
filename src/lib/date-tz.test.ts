@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { todayInTimezone, dayBoundsInTimezone, toDateOnlyString, toLocalDateInput, zonedTimeToUtc, formatInTimezone, formatTimeLabel, formatFullDate } from "./date-tz";
+import { todayInTimezone, dayBoundsInTimezone, toDateOnlyString, toLocalDateInput, zonedTimeToUtc, formatInTimezone, formatTimeLabel, formatFullDate, clientLeadBusinessDate, clientLeadReceivedLabel } from "./date-tz";
 
 describe("todayInTimezone", () => {
   it("returns YYYY-MM-DD for a fixed UTC instant in a west-coast timezone", () => {
@@ -125,5 +125,34 @@ describe("formatTimeLabel", () => {
 describe("formatFullDate", () => {
   it("formats a date string as a full readable date", () => {
     expect(formatFullDate("2026-08-15")).toBe("August 15, 2026");
+  });
+});
+
+describe("client lead received dates — Pacific calendar day", () => {
+  it("parses a date-only string as UTC midnight, which is the previous day in America/Los_Angeles", () => {
+    expect(new Date("2026-09-22").toISOString()).toBe("2026-09-22T00:00:00.000Z");
+    expect(formatInTimezone(new Date("2026-09-22"), "America/Los_Angeles").date).toBe("2026-09-21");
+  });
+
+  it("keeps YYYY-MM-DD 2026-09-22 as Sep 22 when received_on is set", () => {
+    const business = clientLeadBusinessDate({
+      receivedOn: "2026-09-22",
+      receivedAt: new Date("2026-09-23T06:30:00.000Z"),
+    });
+    expect(business).toEqual({ date: "2026-09-22", time: null });
+    expect(clientLeadReceivedLabel("2026-09-22", new Date("2026-09-23T06:30:00.000Z"))).toBe("Sep 22, 2026");
+  });
+
+  it("derives the Pacific calendar day from a true timestamp when received_on is absent, including the midnight boundary", () => {
+    // 06:59Z on Sep 22 is 23:59 the previous evening in PDT (UTC-7).
+    const beforeMidnight = new Date("2026-09-22T06:59:00.000Z");
+    expect(formatInTimezone(beforeMidnight, "America/Los_Angeles")).toEqual({ date: "2026-09-21", time: "23:59" });
+    expect(clientLeadBusinessDate({ receivedOn: null, receivedAt: beforeMidnight }).date).toBe("2026-09-21");
+    expect(clientLeadReceivedLabel(null, beforeMidnight, { withTime: true })).toBe("Sep 21, 2026, 11:59 PM");
+
+    // 07:00Z is midnight at the start of Sep 22 in PDT.
+    const atMidnight = new Date("2026-09-22T07:00:00.000Z");
+    expect(formatInTimezone(atMidnight, "America/Los_Angeles").date).toBe("2026-09-22");
+    expect(clientLeadBusinessDate({ receivedOn: null, receivedAt: atMidnight }).date).toBe("2026-09-22");
   });
 });

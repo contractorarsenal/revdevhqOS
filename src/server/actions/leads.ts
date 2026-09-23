@@ -128,13 +128,13 @@ export async function markLeadLost(leadId: string): Promise<ActionResult> {
  * one canonical lead-creation path also intended for future website-form
  * and webhook/n8n ingestion.
  */
-export async function createManualClientLead(input: unknown): Promise<ActionResult<{ id: string }>> {
+export async function createManualClientLead(input: unknown): Promise<ActionResult<{ id: string; duplicate: boolean }>> {
   try {
     const ctx = await authorize("admin");
     const data = clientLeadManualEntrySchema.parse(input);
     await assertWorkspaceClient(ctx.workspace.id, data.clientId);
 
-    const { id } = await createClientLead({
+    const { id, duplicate } = await createClientLead({
       workspaceId: ctx.workspace.id,
       clientId: data.clientId,
       name: data.name,
@@ -142,7 +142,12 @@ export async function createManualClientLead(input: unknown): Promise<ActionResu
       phone: data.phone,
       requestedService: data.requestedService,
       source: data.source,
-      receivedAt: new Date(data.receivedAt),
+      // Date-only. Do not parse with new Date("YYYY-MM-DD") — that is UTC
+      // midnight and displays as the previous day in America/Los_Angeles.
+      receivedOn: data.receivedOn,
+      externalMessageId: data.externalMessageId,
+      dedupeKey: data.dedupeKey,
+      ingestionSource: data.ingestionSource ?? "manual",
       status: data.status,
       estimatedValue: data.estimatedValue,
       createdVia: "manual",
@@ -156,7 +161,7 @@ export async function createManualClientLead(input: unknown): Promise<ActionResu
     // Deliberately no revalidateGoalPaths() here — new_leads is a sales
     // (leads table) goal metric; client leads are a separate table/metric
     // universe entirely (see the sales/client leads split).
-    return { ok: true, data: { id } };
+    return { ok: true, data: { id, duplicate } };
   } catch (err) {
     return actionError(err);
   }
