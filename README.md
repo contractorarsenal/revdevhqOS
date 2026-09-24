@@ -39,6 +39,17 @@ The app talks to Postgres server-side only; **RLS is enabled on every table
 with no anon/authenticated policies**, so the public PostgREST API cannot
 touch app data.
 
+**Automated Client Lead ingest:** Inbox calls `ingestClientLead`
+(`src/server/actions/client-lead-ingest.ts`) as a workspace admin. One payload
+must include `clientId`, `name`, `source`, `receivedOn` (`YYYY-MM-DD` — never
+`new Date("YYYY-MM-DD")`), `externalMessageId`, `dedupeKey`, and
+`ingestionSource` (`gmail` for mailbox ingest, `Website` source for site forms).
+Those keys are written on the first insert. A repeat returns
+`{ id, duplicate: true }` and does not add a row. Trader U and any client not
+on the Contractor Arsenal allowlist is rejected (`NOT_CA_CLIENT` / `UNMAPPED`)
+and nothing is inserted. The manual form (`createManualClientLead`) is for
+humans and is not this path.
+
 **Financial rules:** subscriptions = expected billing (drive MRR/ARR);
 invoices = amounts requested; payments = money actually collected. Metrics are
 computed in `src/server/queries/metrics.ts` + `src/lib/finance/metrics.ts` (unit-tested).
