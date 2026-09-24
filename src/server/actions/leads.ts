@@ -124,9 +124,12 @@ export async function markLeadLost(leadId: string): Promise<ActionResult> {
 
 /**
  * Internal owner/admin manually creating a lead FOR a client — appears in
- * that client's portal immediately. Routes through createClientLead(), the
- * one canonical lead-creation path also intended for future website-form
- * and webhook/n8n ingestion.
+ * that client's portal immediately. Routes through createClientLead().
+ * Keys are optional here because the human form does not collect them, and
+ * this action does not apply CA-client scope (staff may log any workspace
+ * client). Automated Inbox ingest must POST /api/ingest/client-lead
+ * (bearer secret). That path requires the keys on the initial insert and
+ * rejects Trader U / unmapped clients.
  */
 export async function createManualClientLead(input: unknown): Promise<ActionResult<{ id: string; duplicate: boolean }>> {
   try {
