@@ -44,3 +44,12 @@ export const env: ServerEnv = new Proxy({} as ServerEnv, {
     return load()[prop as keyof ServerEnv];
   },
 });
+
+/** Shared secret for `POST /api/ingest/client-lead`. Read on each request so
+ * an unset value is a 401 from that route, not a boot failure for the rest
+ * of the app. Blank counts as unset. Not part of the cached schema above:
+ * the app must keep running before Jay sets this in Vercel. */
+export function clientLeadIngestSecret(): string | undefined {
+  const value = process.env.CLIENT_LEAD_INGEST_SECRET?.trim();
+  return value ? value : undefined;
+}

@@ -20,7 +20,7 @@ type FormValues = z.input<typeof clientLeadManualEntrySchema>;
 /** Internal owner/admin manual entry of a lead FOR a client — appears in
  * that client's portal immediately via createManualClientLead(). Humans
  * only: this form does not collect externalMessageId or dedupeKey.
- * Automated Inbox ingest must call ingestClientLead(). */
+ * Automated Inbox ingest must POST /api/ingest/client-lead. */
 export function ClientLeadManualFormDialog({
   open, onOpenChange, clients, fixedClientId,
 }: {

@@ -5,8 +5,10 @@ import {
   CA_CLIENT_LEAD_CLIENTS,
   INGEST_CLIENT_LEAD_ERROR,
   TRADER_U_CLIENT_ID,
+  authorizationMatchesIngestSecret,
   classifyCaClientLeadScope,
   ingestClientLeadParseError,
+  ingestFailureStatus,
 } from "@/lib/client-lead-ingest";
 
 const HIGHLINE = "891cd47a-17ad-447d-982b-7d0bb1052b66";
@@ -80,6 +82,30 @@ describe("manual entry stays key-optional", () => {
       receivedOn: "2026-09-22",
     });
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe("authorizationMatchesIngestSecret", () => {
+  it("rejects a missing header, a wrong secret, and an unset secret", () => {
+    expect(authorizationMatchesIngestSecret(null, "s3cret")).toBe(false);
+    expect(authorizationMatchesIngestSecret("Bearer no", "s3cret")).toBe(false);
+    expect(authorizationMatchesIngestSecret("Bearer s3cret", undefined)).toBe(false);
+    expect(authorizationMatchesIngestSecret("Bearer s3cret", "  ")).toBe(false);
+    expect(authorizationMatchesIngestSecret("s3cret", "s3cret")).toBe(false);
+  });
+
+  it("accepts Bearer plus the configured secret", () => {
+    expect(authorizationMatchesIngestSecret("Bearer s3cret", "s3cret")).toBe(true);
+    expect(authorizationMatchesIngestSecret("Bearer s3cret", "  s3cret  ")).toBe(true);
+  });
+});
+
+describe("ingestFailureStatus", () => {
+  it("maps validation and scope failures to 400 and anything else to 500", () => {
+    expect(ingestFailureStatus(INGEST_CLIENT_LEAD_ERROR.MISSING_FIELDS)).toBe(400);
+    expect(ingestFailureStatus(INGEST_CLIENT_LEAD_ERROR.NOT_CA_CLIENT)).toBe(400);
+    expect(ingestFailureStatus(INGEST_CLIENT_LEAD_ERROR.FORBIDDEN)).toBe(403);
+    expect(ingestFailureStatus(undefined)).toBe(500);
   });
 });
 

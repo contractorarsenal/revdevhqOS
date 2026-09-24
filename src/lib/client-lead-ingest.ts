@@ -1,9 +1,11 @@
 /**
  * Automated Client Lead ingest for Inbox & Leads.
  *
- * Call `ingestClientLead` in `src/server/actions/client-lead-ingest.ts`
- * (workspace admin session — `authorize("admin")`). Do not drive automation
- * through `createManualClientLead` or the browser form: that path leaves
+ * Inbox runs outside the app and must POST `/api/ingest/client-lead`
+ * with `Authorization: Bearer <CLIENT_LEAD_INGEST_SECRET>`. The in-app
+ * admin action `ingestClientLead` calls the same insert helper and stays
+ * for session callers. Do not drive automation through
+ * `createManualClientLead` or the browser form: that path leaves
  * `externalMessageId` / `dedupeKey` optional, so a row can be inserted with
  * null keys and a later update cannot make dedupe atomic.
  *
@@ -19,7 +21,8 @@
  *   First call → `duplicate: false`. Same externalMessageId or dedupeKey
  *   again → the existing id, `duplicate: true`, no second row.
  * Failure: `{ ok: false, error, code }` where `code` is one of
- *   MISSING_FIELDS, INVALID_DATE, INVALID_CLIENT, NOT_CA_CLIENT, UNMAPPED, FORBIDDEN.
+ *   MISSING_FIELDS, INVALID_DATE, INVALID_CLIENT, NOT_CA_CLIENT, UNMAPPED,
+ *   FORBIDDEN, UNAUTHORIZED (HTTP route only, when the bearer secret is missing or wrong).
  *
  * CA scope (automated ingest only). Client industry is free text, so it is
  * not an allow signal — a non-CA business can be mistagged, and CA trades
@@ -33,6 +36,7 @@
  * workspace client. That form is not the Inbox path.
  */
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { ZodError } from "zod";
 
 export const INGEST_CLIENT_LEAD_ERROR = {
@@ -42,6 +46,7 @@ export const INGEST_CLIENT_LEAD_ERROR = {
   NOT_CA_CLIENT: "NOT_CA_CLIENT",
   UNMAPPED: "UNMAPPED",
   FORBIDDEN: "FORBIDDEN",
+  UNAUTHORIZED: "UNAUTHORIZED",
 } as const;
 
 export type IngestClientLeadErrorCode =
@@ -113,4 +118,33 @@ export function ingestClientLeadParseError(error: ZodError): {
     return { ok: false, error: message, code: INGEST_CLIENT_LEAD_ERROR.INVALID_DATE };
   }
   return { ok: false, error: message, code: INGEST_CLIENT_LEAD_ERROR.MISSING_FIELDS };
+}
+
+/** True only when `Authorization` is `Bearer <secret>` and secret is set.
+ * Digests are compared so a length mismatch does not throw or short-circuit
+ * on the secret itself. An unset secret never matches. */
+export function authorizationMatchesIngestSecret(
+  authorization: string | null,
+  secret: string | undefined,
+): boolean {
+  const configured = secret?.trim() ?? "";
+  if (!configured || !authorization?.startsWith("Bearer ")) return false;
+  const presented = authorization.slice("Bearer ".length);
+  const a = createHash("sha256").update(presented).digest();
+  const b = createHash("sha256").update(configured).digest();
+  return timingSafeEqual(a, b);
+}
+
+/** HTTP status for a failed ingest result. Auth failures are 401 and are
+ * decided before this runs; unexpected errors are 500. */
+export function ingestFailureStatus(code: string | undefined): 400 | 403 | 500 {
+  if (code === INGEST_CLIENT_LEAD_ERROR.FORBIDDEN) return 403;
+  if (
+    code === INGEST_CLIENT_LEAD_ERROR.MISSING_FIELDS
+    || code === INGEST_CLIENT_LEAD_ERROR.INVALID_DATE
+    || code === INGEST_CLIENT_LEAD_ERROR.INVALID_CLIENT
+    || code === INGEST_CLIENT_LEAD_ERROR.NOT_CA_CLIENT
+    || code === INGEST_CLIENT_LEAD_ERROR.UNMAPPED
+  ) return 400;
+  return 500;
 }

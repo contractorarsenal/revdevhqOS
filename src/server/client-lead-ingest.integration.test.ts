@@ -39,6 +39,7 @@ vi.mock("@/server/authorize", async () => {
 });
 
 import { ingestClientLead } from "@/server/actions/client-lead-ingest";
+import { POST as postClientLead } from "@/app/api/ingest/client-lead/route";
 
 const WS1 = "11111111-1111-4111-8111-111111111111";
 const WS2 = "22222222-2222-4222-8222-222222222222";
@@ -50,8 +51,10 @@ const ELITE = "64aba590-8476-4547-a2fd-23682ddc8fc7";
 const JC_GRADING = "894560bf-4913-41e1-af90-09e1eb1fd281";
 const UNMAPPED = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CRYPTO_OTHER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const INGEST_SECRET = "test-ingest-secret";
 
 let client: PGlite;
+const previousIngestSecret = process.env.CLIENT_LEAD_INGEST_SECRET;
 
 function setCtx(role: string) {
   (globalThis as Record<string, unknown>).__ingestTestCtx = {
@@ -145,14 +148,28 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await client.close();
+  if (previousIngestSecret === undefined) delete process.env.CLIENT_LEAD_INGEST_SECRET;
+  else process.env.CLIENT_LEAD_INGEST_SECRET = previousIngestSecret;
 });
 
 beforeEach(async () => {
   revalidatePath.mockClear();
   logActivity.mockClear();
   setCtx("admin");
+  process.env.CLIENT_LEAD_INGEST_SECRET = INGEST_SECRET;
   await client.exec(`DELETE FROM client_leads;`);
 });
+
+function ingestRequest(body: unknown, authorization?: string) {
+  return postClientLead(new Request("http://localhost/api/ingest/client-lead", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(authorization ? { authorization } : {}),
+    },
+    body: JSON.stringify(body),
+  }));
+}
 
 describe("ingestClientLead", () => {
   it("inserts one row with both keys, then a replay is a duplicate and still one row", async () => {
@@ -267,5 +284,65 @@ describe("ingestClientLead", () => {
     const result = await ingestClientLead(payload());
     expect(result).toMatchObject({ ok: false, code: INGEST_CLIENT_LEAD_ERROR.FORBIDDEN });
     expect(await leadCount()).toBe(0);
+  });
+});
+
+describe("POST /api/ingest/client-lead", () => {
+  it("rejects a missing, wrong, or unset bearer secret and inserts nothing", async () => {
+    const missing = await ingestRequest(payload());
+    const wrong = await ingestRequest(payload(), "Bearer not-the-secret");
+    delete process.env.CLIENT_LEAD_INGEST_SECRET;
+    const unset = await ingestRequest(payload(), `Bearer ${INGEST_SECRET}`);
+    expect(missing.status).toBe(401);
+    expect(wrong.status).toBe(401);
+    expect(unset.status).toBe(401);
+    expect(await missing.json()).toMatchObject({ ok: false, code: INGEST_CLIENT_LEAD_ERROR.UNAUTHORIZED });
+    expect(await leadCount()).toBe(0);
+    expect(logActivity).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing keys and inserts nothing", async () => {
+    const response = await ingestRequest(payload({ externalMessageId: undefined }), `Bearer ${INGEST_SECRET}`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, code: INGEST_CLIENT_LEAD_ERROR.MISSING_FIELDS });
+    expect(await leadCount()).toBe(0);
+  });
+
+  it("rejects Trader U and inserts nothing", async () => {
+    const response = await ingestRequest(payload({
+      clientId: TRADER_U_CLIENT_ID,
+      externalMessageId: "gmail-trader-http",
+      dedupeKey: "gmail:trader-http",
+    }), `Bearer ${INGEST_SECRET}`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, code: INGEST_CLIENT_LEAD_ERROR.NOT_CA_CLIENT });
+    expect(await leadCount()).toBe(0);
+  });
+
+  it("creates one row, then a replay is 200 duplicate and still one row", async () => {
+    const first = await ingestRequest(payload({
+      externalMessageId: "gmail-http-1",
+      dedupeKey: "gmail:http-1",
+    }), `Bearer ${INGEST_SECRET}`);
+    const second = await ingestRequest(payload({
+      externalMessageId: "gmail-http-1",
+      dedupeKey: "gmail:http-1",
+      name: "Edited Over HTTP",
+    }), `Bearer ${INGEST_SECRET}`);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const created = await first.json() as { ok: true; data: { id: string; duplicate: boolean } };
+    const replay = await second.json() as { ok: true; data: { id: string; duplicate: boolean } };
+    expect(created).toMatchObject({ ok: true, data: { duplicate: false } });
+    expect(replay).toEqual({ ok: true, data: { id: created.data.id, duplicate: true } });
+    expect(await leadCount()).toBe(1);
+    const db = (globalThis as Record<string, unknown>).__ingestTestDb as ReturnType<typeof drizzle>;
+    const [row] = await db.select().from(clientLeads);
+    expect(row.name).toBe("Jane Homeowner");
+    expect(row.externalMessageId).toBe("gmail-http-1");
+    expect(row.dedupeKey).toBe("gmail:http-1");
+    expect(row.workspaceId).toBe(WS1);
+    expect(logActivity).toHaveBeenCalledTimes(1);
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({ actorId: null, workspaceId: WS1 }));
   });
 });

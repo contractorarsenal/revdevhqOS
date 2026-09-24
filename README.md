@@ -39,16 +39,21 @@ The app talks to Postgres server-side only; **RLS is enabled on every table
 with no anon/authenticated policies**, so the public PostgREST API cannot
 touch app data.
 
-**Automated Client Lead ingest:** Inbox calls `ingestClientLead`
-(`src/server/actions/client-lead-ingest.ts`) as a workspace admin. One payload
-must include `clientId`, `name`, `source`, `receivedOn` (`YYYY-MM-DD` — never
+**Automated Client Lead ingest:** Inbox (outside the app) POSTs
+`/api/ingest/client-lead` with `Authorization: Bearer <CLIENT_LEAD_INGEST_SECRET>`.
+Do not use the browser form or the admin server action for that bot. One JSON
+body must include `clientId`, `name`, `source`, `receivedOn` (`YYYY-MM-DD` — never
 `new Date("YYYY-MM-DD")`), `externalMessageId`, `dedupeKey`, and
 `ingestionSource` (`gmail` for mailbox ingest, `Website` source for site forms).
-Those keys are written on the first insert. A repeat returns
-`{ id, duplicate: true }` and does not add a row. Trader U and any client not
-on the Contractor Arsenal allowlist is rejected (`NOT_CA_CLIENT` / `UNMAPPED`)
-and nothing is inserted. The manual form (`createManualClientLead`) is for
-humans and is not this path.
+Optional: `email`, `phone`, `requestedService`. Those keys are written on the
+first insert. A repeat returns `{ ok: true, data: { id, duplicate: true } }`
+and does not add a row. Trader U and any client not on the Contractor Arsenal
+allowlist is rejected (`NOT_CA_CLIENT` / `UNMAPPED`) and nothing is inserted.
+The route is 401 when the secret is missing or wrong. Set
+`CLIENT_LEAD_INGEST_SECRET` in the Vercel project env before Inbox calls it;
+do not commit the value. The in-app action `ingestClientLead` remains for an
+admin session and uses the same insert. The manual form
+(`createManualClientLead`) is for humans and is not this path.
 
 **Financial rules:** subscriptions = expected billing (drive MRR/ARR);
 invoices = amounts requested; payments = money actually collected. Metrics are
@@ -76,6 +81,7 @@ embedded Postgres (dev-only). Auth always uses your real Supabase project.
 | `DATABASE_URL` | Supabase **pooled** connection string (app runtime) |
 | `DATABASE_URL_DIRECT` | Supabase **direct** connection string (migrations; falls back to `DATABASE_URL`) |
 | `NEXT_PUBLIC_APP_URL` | Base URL of the deployment |
+| `CLIENT_LEAD_INGEST_SECRET` | Bearer secret for `POST /api/ingest/client-lead`. Optional until Inbox is switched on; the route returns 401 while it is unset. Set it in Vercel before Inbox calls the route. Never commit a real value. |
 
 Never commit `.env*` files with values — they are gitignored.
 
