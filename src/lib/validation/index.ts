@@ -92,9 +92,21 @@ export const leadSchema = z.object({
   notes: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
 });
 
+const optionalIngestionToken = z
+  .string()
+  .trim()
+  .max(500)
+  .transform((v) => (v === "" ? null : v))
+  .nullable()
+  .optional();
+
 /** Internal manual entry of a lead FOR a client — feeds that client's
  * portal immediately. Distinct from leadSchema (agency-prospect leads):
- * status is the 5-value client-facing workflow, clientId is required. */
+ * status is the 5-value client-facing workflow, clientId is required.
+ * `receivedOn` is a calendar date (YYYY-MM-DD), not an instant.
+ * externalMessageId / dedupeKey stay optional because the human form does
+ * not collect them. Automated Inbox ingest must use clientLeadIngestSchema
+ * (keys required on the first insert), not this schema. */
 export const clientLeadManualEntrySchema = z.object({
   clientId: z.string().uuid("Select a client"),
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -102,9 +114,34 @@ export const clientLeadManualEntrySchema = z.object({
   phone: optionalTrimmed,
   requestedService: optionalTrimmed,
   source: z.enum(["Website", "Google Business Profile", "Google Ads", "Facebook", "Referral", "Phone", "Manual", "Other"]).default("Manual"),
-  receivedAt: z.string().min(1, "Date received is required"),
+  receivedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date received is required"),
   status: z.enum(["new", "contacted", "estimate_scheduled", "won", "lost"]).default("new"),
   estimatedValue: optionalMoneyField,
+  externalMessageId: optionalIngestionToken,
+  dedupeKey: optionalIngestionToken,
+  ingestionSource: z.enum(["manual", "website", "webhook", "api", "gmail", "form"]).optional(),
+});
+
+/** Automated Inbox ingest. Every identity field is required so the first
+ * INSERT carries externalMessageId, dedupeKey, receivedOn, and
+ * ingestionSource. `manual` is intentionally absent — humans use
+ * clientLeadManualEntrySchema. `receivedOn` is YYYY-MM-DD, not an instant. */
+export const CLIENT_LEAD_INGEST_SOURCES = ["website", "webhook", "api", "gmail", "form"] as const;
+
+const requiredIngestionToken = (field: string) =>
+  z.string().trim().min(1, `${field} is required`).max(500);
+
+export const clientLeadIngestSchema = z.object({
+  clientId: z.string().uuid("clientId must be a client uuid"),
+  name: z.string().trim().min(1, "Name is required").max(200),
+  email: optionalTrimmed,
+  phone: optionalTrimmed,
+  requestedService: optionalTrimmed,
+  source: z.enum(["Website", "Google Business Profile", "Google Ads", "Facebook", "Referral", "Phone", "Manual", "Other"]),
+  receivedOn: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "receivedOn must be YYYY-MM-DD"),
+  externalMessageId: requiredIngestionToken("externalMessageId"),
+  dedupeKey: requiredIngestionToken("dedupeKey"),
+  ingestionSource: z.enum(CLIENT_LEAD_INGEST_SOURCES),
 });
 
 /** Portal-side lead mutations — each field is edited independently. */

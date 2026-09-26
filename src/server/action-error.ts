@@ -7,7 +7,7 @@ import { DrizzleQueryError } from "drizzle-orm";
  */
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: string };
 
 /** Postgres SQLSTATE for a unique-constraint violation. */
 const UNIQUE_VIOLATION = "23505";

@@ -20,6 +20,9 @@ const PUBLIC_PATHS = [
   "/clientportal/accept-invite",
   "/robots.txt",
   "/sitemap.xml",
+  // Inbox has no browser session. The route rejects callers that do not
+  // present Authorization: Bearer CLIENT_LEAD_INGEST_SECRET.
+  "/api/ingest",
 ];
 
 export default async function proxy(request: NextRequest) {
