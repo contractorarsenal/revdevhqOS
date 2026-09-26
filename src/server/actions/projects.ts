@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { projects } from "@/lib/db/schema";
+import { projects, projectUpdates } from "@/lib/db/schema";
 import { authorize, actionError, type ActionResult } from "@/server/authorize";
 import { assertWorkspaceClient, assertWorkspaceMember } from "@/server/workspace-guards";
-import { projectSchema } from "@/lib/validation";
+import { projectSchema, projectUpdateSchema } from "@/lib/validation";
 import { logActivity } from "@/server/activity";
 import { revalidateGoalPaths } from "./revalidate-goals";
 
@@ -39,7 +39,10 @@ export async function createProject(input: unknown): Promise<ActionResult<{ id: 
         startDate: data.startDate ?? null,
         dueDate: data.dueDate ?? null,
         waitingOn: data.waitingOn ?? null,
+        waitingOnParty: data.waitingOnParty ?? null,
         nextAction: data.nextAction ?? null,
+        clientVisible: data.clientVisible,
+        clientSummary: data.clientSummary ?? null,
         color: data.color ?? null,
         completedAt: data.status === "live" ? new Date() : null,
       })
@@ -77,7 +80,10 @@ export async function updateProject(projectId: string, input: unknown): Promise<
         startDate: data.startDate ?? null,
         dueDate: data.dueDate ?? null,
         waitingOn: data.waitingOn ?? null,
+        waitingOnParty: data.waitingOnParty ?? null,
         nextAction: data.nextAction ?? null,
+        clientVisible: data.clientVisible,
+        clientSummary: data.clientSummary ?? null,
         color: data.color ?? null,
         // Completion timestamp powers "projects completed" goal metrics:
         // stamped on the transition into "live" (delivered/launched), kept
@@ -136,6 +142,34 @@ export async function archiveProject(projectId: string): Promise<ActionResult> {
       metadata: { from: existing.status },
     });
     revalidatePath("/projects");
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Staff posts an update on a project. Only updates marked clientVisible are
+ * ever returned by portal queries. */
+export async function postProjectUpdate(projectId: string, input: unknown): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("member");
+    const project = await ownedProject(ctx.workspace.id, projectId);
+    const data = projectUpdateSchema.parse(input);
+    const [row] = await db
+      .insert(projectUpdates)
+      .values({
+        workspaceId: ctx.workspace.id, projectId, authorId: ctx.user.id,
+        body: data.body, clientVisible: data.clientVisible,
+      })
+      .returning({ id: projectUpdates.id });
+    await logActivity({
+      workspaceId: ctx.workspace.id, actorId: ctx.user.id,
+      action: "project.update_posted", entityType: "project", entityId: projectId,
+      clientId: project.clientId,
+      metadata: { updateId: row.id, clientVisible: data.clientVisible },
+    });
+    revalidatePath(`/projects/${projectId}`);
+    if (project.clientId) revalidatePath("/clientportal/projects");
     return { ok: true };
   } catch (err) {
     return actionError(err);

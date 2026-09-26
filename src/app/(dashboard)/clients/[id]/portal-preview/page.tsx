@@ -7,10 +7,10 @@ import { db } from "@/lib/db";
 import { clients } from "@/lib/db/schema";
 import { getClientLeadMetrics } from "@/server/queries/client-leads";
 import { getClientPortalAccess } from "@/server/queries/client-portal";
+import { getPortalDashboard } from "@/server/queries/portal-data";
 import { todayInTimezone } from "@/lib/date-tz";
-import { resolveClientAccent } from "@/lib/portal";
-import { PortalShell } from "@/features/portal/portal-shell";
-import { PortalOverview } from "@/features/portal/portal-overview";
+import { ClientPortalShell } from "@/features/clientportal/shell";
+import { PortalDashboardView } from "@/features/clientportal/dashboard-view";
 
 export const metadata = { title: "Client portal preview" };
 // Date-sensitive (lead metrics) — never statically frozen.
@@ -34,10 +34,11 @@ export default async function PortalPreviewPage({ params }: { params: Promise<{ 
     .limit(1);
   if (!client) notFound();
 
-  const accent = resolveClientAccent(client);
-  const [leadMetrics, access] = await Promise.all([
-    getClientLeadMetrics(db, ctx.workspace.id, client.id, ctx.workspace.timezone, todayInTimezone(ctx.workspace.timezone)),
+  const today = todayInTimezone(ctx.workspace.timezone);
+  const [leadMetrics, access, data] = await Promise.all([
+    getClientLeadMetrics(db, ctx.workspace.id, client.id, ctx.workspace.timezone, today),
     getClientPortalAccess(ctx.workspace.id, client.id),
+    getPortalDashboard(db, { workspaceId: ctx.workspace.id, clientId: client.id }, today, null),
   ]);
 
   const previewName = access.primaryContact?.name ?? "Client";
@@ -55,16 +56,9 @@ export default async function PortalPreviewPage({ params }: { params: Promise<{ 
           Exit Preview
         </Link>
       </div>
-      <PortalShell businessName={client.name} accent={accent} showSignOut={false} showNav={false}>
-        <PortalOverview
-          businessName={client.name}
-          accent={accent}
-          role={access.membership?.role ?? "client_owner"}
-          status={access.membership?.status ?? "active"}
-          memberName={previewName}
-          leadMetrics={leadMetrics}
-        />
-      </PortalShell>
+      <ClientPortalShell clientName={client.name} staticNav>
+        <PortalDashboardView firstName={previewName.split(" ")[0]} data={data} leadMetrics={leadMetrics} base="#" />
+      </ClientPortalShell>
     </div>
   );
 }

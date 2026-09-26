@@ -110,7 +110,8 @@ beforeAll(async () => {
       description text, status text NOT NULL DEFAULT 'todo', priority text NOT NULL DEFAULT 'medium',
       assignee_id uuid, client_id uuid, lead_id uuid, opportunity_id uuid, due_date timestamptz, project_id uuid,
       scheduled_date date, scheduled_start_time text, scheduled_end_time text,
-      all_day boolean NOT NULL DEFAULT false, calendar_visible boolean NOT NULL DEFAULT true,
+      all_day boolean NOT NULL DEFAULT false,
+      client_visible boolean NOT NULL DEFAULT false, calendar_visible boolean NOT NULL DEFAULT true,
       completed_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE TABLE opportunities (

@@ -136,6 +136,7 @@
    (primary renders solid-filled, destructive renders tinted/ghost) rather
    than by hue — see src/components/ui/button.tsx. ===== */
 :root {
+  color-scheme: light;
   --background: #fafafa;
   --foreground: #111111;
   --card: #ffffff;
@@ -171,33 +172,34 @@
 }
 
 .dark {
-  --background: #0a0a0a;
+  color-scheme: dark;
+  --background: #0a0a0c;
   --foreground: #f4f4f5;
-  --card: #141415;
+  --card: #131316;
   --card-foreground: #f4f4f5;
-  --popover: #141415;
+  --popover: #131316;
   --popover-foreground: #f4f4f5;
-  --primary: #d64545;
+  --primary: #d03a3a;
   --primary-foreground: #ffffff;
-  --secondary: #212123;
+  --secondary: #1c1c20;
   --secondary-foreground: #f4f4f5;
-  --muted: #212123;
+  --muted: #1a1a1e;
   --muted-foreground: #a1a1aa;
-  --accent: #212123;
+  --accent: #1f1f24;
   --accent-foreground: #f4f4f5;
   --destructive: #f16a6a;
-  --border: #27272a;
-  --input: #27272a;
-  --ring: #d64545;
-  --sidebar: #0d0d0e;
+  --border: #26262b;
+  --input: #2d2d33;
+  --ring: #d03a3a;
+  --sidebar: #0e0e10;
   --sidebar-foreground: #f4f4f5;
-  --sidebar-primary: #d64545;
+  --sidebar-primary: #d03a3a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #212123;
+  --sidebar-accent: #1c1c20;
   --sidebar-accent-foreground: #f4f4f5;
-  --sidebar-border: #27272a;
-  --sidebar-ring: #d64545;
-  --chart-1: #d64545;
+  --sidebar-border: #232328;
+  --sidebar-ring: #d03a3a;
+  --chart-1: #e05252;
   --chart-2: #a1a1aa;
   --chart-3: #0fa896;
   --chart-4: #e8a13c;

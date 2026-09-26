@@ -56,13 +56,13 @@ describe("post-login destination resolver", () => {
     expect(resolvePostLoginDestination({ hasInternalMembership: true, portalMembershipStatus: null })).toBe("/dashboard");
   });
 
-  it("client-only active members land on /portal", () => {
-    expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: "active" })).toBe("/portal");
+  it("client-only active members land on /clientportal/dashboard", () => {
+    expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: "active" })).toBe("/clientportal/dashboard");
   });
 
   it("suspended and revoked members land on the safe access-denied page", () => {
-    expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: "suspended" })).toBe("/portal/access-denied");
-    expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: "revoked" })).toBe("/portal/access-denied");
+    expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: "suspended" })).toBe("/clientportal/access-denied");
+    expect(resolvePostLoginDestination({ hasInternalMembership: false, portalMembershipStatus: "revoked" })).toBe("/clientportal/access-denied");
   });
 
   it("users with no memberships fall back to setup", () => {

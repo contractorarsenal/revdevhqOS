@@ -131,7 +131,7 @@ export async function inviteClientToPortal(clientId: string, input: unknown): Pr
       metadata: { email, role: data.role },
     });
     revalidateClient(clientId);
-    return { ok: true, data: { link: `${env.NEXT_PUBLIC_APP_URL}/portal/accept-invite?token=${token}`, email } };
+    return { ok: true, data: { link: `${env.NEXT_PUBLIC_APP_URL}/clientportal/accept-invite?token=${token}`, email } };
   } catch (err) {
     return actionError(err);
   }
@@ -158,7 +158,7 @@ export async function regeneratePortalInviteLink(inviteId: string): Promise<Acti
       .where(eq(clientPortalInvites.id, inviteId));
 
     revalidateClient(invite.clientId);
-    return { ok: true, data: { link: `${env.NEXT_PUBLIC_APP_URL}/portal/accept-invite?token=${token}` } };
+    return { ok: true, data: { link: `${env.NEXT_PUBLIC_APP_URL}/clientportal/accept-invite?token=${token}` } };
   } catch (err) {
     return actionError(err);
   }
@@ -334,7 +334,7 @@ export async function acceptClientInvite(input: unknown): Promise<ActionResult<{
       action: "portal.accepted", entityType: "client", entityId: invite.clientId, clientId: invite.clientId,
       metadata: { role: invite.role, emailNotifications: data.emailNotifications },
     });
-    return { ok: true, data: { destination: "/portal" } };
+    return { ok: true, data: { destination: "/clientportal/dashboard" } };
   } catch (err) {
     return actionError(err);
   }

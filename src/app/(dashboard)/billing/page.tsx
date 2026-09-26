@@ -3,6 +3,7 @@ import { timed } from "@/lib/dev/timing";
 import { listServices, listSubscriptions, listInvoices, listPayments } from "@/server/queries/billing";
 import { listClients } from "@/server/queries/clients";
 import { getDashboardMetrics } from "@/server/queries/metrics";
+import { todayInTimezone } from "@/lib/date-tz";
 import { BillingView } from "@/features/billing/billing-view";
 
 // Date-sensitive: days remaining, pace, and due states must be computed at
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; new?: string; open?: string }>;
+  searchParams: Promise<{ tab?: string; new?: string; open?: string; bulk?: string }>;
 }) {
   const ctx = await requireWorkspace();
   const [services, subscriptions, invoices, payments, clients, metrics] = await timed("billing queries", () => Promise.all([
@@ -36,6 +37,8 @@ export default async function BillingPage({
       initialTab={params.tab}
       openNew={params.new === "1"}
       highlightInvoiceId={params.open}
+      today={todayInTimezone(ctx.workspace.timezone)}
+      openBulk={params.bulk === "1"}
     />
   );
 }

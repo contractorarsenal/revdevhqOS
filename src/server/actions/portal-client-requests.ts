@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { clientRequests } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
+import { clientRequests, projects } from "@/lib/db/schema";
 import { authorizePortal, actionError, type ActionResult } from "@/server/portal-authorize";
 import { logActivity } from "@/server/activity";
-import { portalClientRequestSchema } from "@/lib/validation";
+import { portalRequestWithProjectSchema } from "@/lib/validation";
 
 /** A client submitting their own request through the portal. clientId and
  * workspaceId are re-derived from the server-verified portal session —
@@ -14,7 +15,21 @@ export async function submitClientRequest(input: unknown): Promise<ActionResult>
   try {
     const ctx = await authorizePortal("client_member");
     const { clientId, workspaceId } = ctx.membership;
-    const data = portalClientRequestSchema.parse(input);
+    const data = portalRequestWithProjectSchema.parse(input);
+
+    // A linked project must be one of THIS client's client-visible projects —
+    // any other id (another client's, hidden, or nonexistent) is rejected.
+    if (data.projectId) {
+      const [proj] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(
+          eq(projects.id, data.projectId), eq(projects.workspaceId, workspaceId),
+          eq(projects.clientId, clientId), eq(projects.clientVisible, true)
+        ))
+        .limit(1);
+      if (!proj) throw new Error("Project not found.");
+    }
 
     const [row] = await db
       .insert(clientRequests)
@@ -24,6 +39,7 @@ export async function submitClientRequest(input: unknown): Promise<ActionResult>
         type: data.type,
         description: data.description,
         priority: data.priority,
+        projectId: data.projectId ?? null,
         submittedBy: ctx.user.id,
       })
       .returning({ id: clientRequests.id });
@@ -34,7 +50,8 @@ export async function submitClientRequest(input: unknown): Promise<ActionResult>
       clientId, metadata: { type: data.type, source: "portal" },
     });
 
-    revalidatePath("/portal/requests");
+    revalidatePath("/clientportal/requests");
+    revalidatePath("/clientportal/dashboard");
     revalidatePath("/client-requests");
     revalidatePath(`/clients/${clientId}`);
     return { ok: true };

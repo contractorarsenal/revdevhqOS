@@ -85,7 +85,7 @@ export function AcceptInviteForm({
       // Hard navigation on purpose: the session was just created in this
       // very submit, so the SPA router cache still reflects the anonymous
       // user. A full load enters the portal with a clean, authed tree.
-      window.location.assign(result.data?.destination ?? "/portal");
+      window.location.assign(result.data?.destination ?? "/clientportal/dashboard");
     } finally {
       setPending(false);
     }

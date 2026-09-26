@@ -16,6 +16,8 @@ function selectShape() {
     taskId: clientRequests.taskId,
     taskTitle: tasks.title,
     resolutionNotes: clientRequests.resolutionNotes,
+    clientUpdate: clientRequests.clientUpdate,
+    projectId: clientRequests.projectId,
     createdAt: clientRequests.createdAt,
     updatedAt: clientRequests.updatedAt,
   };

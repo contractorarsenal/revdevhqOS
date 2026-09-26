@@ -84,11 +84,11 @@ export function validateInviteForAcceptance(
 export function resolvePostLoginDestination(input: {
   hasInternalMembership: boolean;
   portalMembershipStatus: ClientPortalStatus | null;
-}): "/dashboard" | "/portal" | "/portal/access-denied" | "/setup" {
+}): "/dashboard" | "/clientportal/dashboard" | "/clientportal/access-denied" | "/setup" {
   if (input.hasInternalMembership) return "/dashboard";
-  if (input.portalMembershipStatus === "active") return "/portal";
+  if (input.portalMembershipStatus === "active") return "/clientportal/dashboard";
   if (input.portalMembershipStatus === "suspended" || input.portalMembershipStatus === "revoked") {
-    return "/portal/access-denied";
+    return "/clientportal/access-denied";
   }
   return "/setup";
 }

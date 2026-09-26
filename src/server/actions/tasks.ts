@@ -42,6 +42,7 @@ function taskValues(data: ReturnType<typeof taskSchema.parse>) {
     scheduledStartTime: data.scheduledStartTime ?? null,
     scheduledEndTime: data.scheduledEndTime ?? null,
     allDay: data.allDay,
+    clientVisible: data.clientVisible,
   };
 }
 
@@ -150,6 +151,23 @@ export async function setTaskStatus(taskId: string, status: "todo" | "in_progres
     }
     revalidateTaskPaths(existing.clientId);
     revalidatePath("/projects");
+    return { ok: true };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+/** Staff toggles whether a task appears in the client's portal checklist. */
+export async function setTaskClientVisible(taskId: string, visible: boolean): Promise<ActionResult> {
+  try {
+    const ctx = await authorize("member");
+    const existing = await ownedTask(ctx.workspace.id, taskId);
+    await db
+      .update(tasks)
+      .set({ clientVisible: visible })
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, ctx.workspace.id)));
+    revalidateTaskPaths(existing.clientId);
+    revalidatePath("/clientportal/projects");
     return { ok: true };
   } catch (err) {
     return actionError(err);

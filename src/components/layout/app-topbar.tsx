@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, UserPlus, Target, Kanban, FileText, DollarSign, CheckSquare } from "lucide-react";
+import { Plus, UserPlus, Target, Kanban, FileText, DollarSign, CheckSquare, ListPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { TabletNavDrawer } from "@/components/layout/tablet-nav-drawer";
 import { getPageTitle } from "@/components/layout/nav-items";
 
@@ -17,6 +18,7 @@ const QUICK_ADD = [
   { href: "/pipeline?new=1", label: "Add opportunity", icon: Kanban },
   { href: "/billing?tab=invoices&new=1", label: "Create invoice", icon: FileText },
   { href: "/billing?tab=payments&new=1", label: "Record payment", icon: DollarSign },
+  { href: "/billing?tab=payments&bulk=1", label: "Bulk add payments", icon: ListPlus },
   { href: "/tasks?new=1", label: "Add task", icon: CheckSquare },
 ];
 
@@ -38,6 +40,7 @@ export function AppTopbar({ workspaceName, userName, role }: { workspaceName: st
         <p className="truncate text-[11px] leading-tight text-muted-foreground lg:hidden">{workspaceName}</p>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" className="gap-1.5 px-2.5 sm:px-3">

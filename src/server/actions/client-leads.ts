@@ -15,8 +15,8 @@ import {
 } from "@/lib/validation";
 
 function revalidateClientLeads(clientId: string) {
-  revalidatePath("/portal");
-  revalidatePath("/portal/leads");
+  revalidatePath("/clientportal/dashboard");
+  revalidatePath("/clientportal/leads");
   revalidatePath(`/clients/${clientId}`);
   revalidatePath(`/clients/${clientId}/leads`);
 }

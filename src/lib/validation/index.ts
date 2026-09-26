@@ -234,6 +234,7 @@ export const taskSchema = z.object({
   scheduledStartTime: optionalTrimmed,
   scheduledEndTime: optionalTrimmed,
   allDay: z.coerce.boolean().default(false),
+  clientVisible: z.coerce.boolean().default(false),
 });
 
 // The original 5 values ("planning", "active", "on_hold", "completed",
@@ -244,6 +245,9 @@ export const PROJECT_STATUSES = [
   "revisions", "ready_to_launch", "live", "paused", "at_risk", "closed",
 ] as const;
 
+export const WAITING_ON_PARTIES = ["client", "ca", "jay", "third_party", "other"] as const;
+export type WaitingOnParty = (typeof WAITING_ON_PARTIES)[number];
+
 export const projectSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
   description: z.string().trim().max(5000).transform((v) => (v === "" ? null : v)).nullable().optional(),
@@ -253,7 +257,14 @@ export const projectSchema = z.object({
   startDate: optionalDate,
   dueDate: optionalDate,
   waitingOn: optionalTrimmed,
+  waitingOnParty: z
+    .union([z.literal(""), z.enum(WAITING_ON_PARTIES)])
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional(),
   nextAction: optionalTrimmed,
+  clientVisible: z.coerce.boolean().default(false),
+  clientSummary: z.string().trim().max(2000).transform((v) => (v === "" ? null : v)).nullable().optional(),
   color: z
     .union([z.literal(""), z.string().regex(/^#[0-9a-fA-F]{6}$/)])
     .transform((v) => (v === "" ? null : v))
@@ -443,6 +454,60 @@ export const portalClientRequestSchema = clientRequestSchema.omit({ clientId: tr
 export const updateClientRequestStatusSchema = z.object({
   status: z.enum(CLIENT_REQUEST_STATUSES),
   resolutionNotes: optionalTrimmed,
+  clientUpdate: z.string().trim().max(1000).transform((v) => (v === "" ? null : v)).nullable().optional(),
+});
+
+/** Portal request submission: optional project link, validated against the
+ * caller's own client server-side. */
+export const portalRequestWithProjectSchema = portalClientRequestSchema.extend({
+  projectId: uuidOrNull,
+});
+
+export const projectUpdateSchema = z.object({
+  body: z.string().trim().min(1, "Update text is required").max(3000),
+  clientVisible: z.coerce.boolean().default(true),
+});
+
+export const portalAccountSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(120),
+});
+
+export const FILE_CATEGORIES = ["logo", "image", "document", "mockup", "brand", "deliverable", "other"] as const;
+export const requestUploadSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  sizeBytes: z.coerce.number().int().positive().max(25 * 1024 * 1024, "Files can be up to 25 MB."),
+  mimeType: z.string().trim().max(120).optional().nullable(),
+  category: z.enum(FILE_CATEGORIES).default("other"),
+  projectId: uuidOrNull,
+});
+
+export const DASHBOARD_WIDGET_IDS = [
+  "needs_jay", "project_health", "waiting_on", "attention", "todays_work", "team_workload",
+  "client_requests", "sales_pipeline", "client_leads", "financial", "upcoming", "activity",
+] as const;
+export const dashboardLayoutSchema = z.object({
+  order: z.array(z.enum(DASHBOARD_WIDGET_IDS)).max(DASHBOARD_WIDGET_IDS.length),
+  hidden: z.array(z.enum(DASHBOARD_WIDGET_IDS)).max(DASHBOARD_WIDGET_IDS.length),
+});
+
+export const bulkPaymentRowSchema = z.object({
+  rowId: z.string().min(1).max(64),
+  clientId: z.string().uuid("Select a client"),
+  subscriptionId: uuidOrNull,
+  invoiceId: uuidOrNull,
+  amount: z.coerce.number().positive("Amount must be greater than zero").max(999_999_999),
+  paidAt: z.string().min(1, "Payment date is required").regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date"),
+  method: optionalTrimmed,
+  reference: optionalTrimmed,
+  note: z.string().trim().max(500).transform((v) => (v === "" ? null : v)).nullable().optional(),
+  /** "YYYY-MM"; only meaningful with a subscription (defaults to the payment month). */
+  billingMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
+});
+export type BulkPaymentRowInput = z.infer<typeof bulkPaymentRowSchema>;
+export const bulkPaymentBatchSchema = z.object({
+  rows: z.array(bulkPaymentRowSchema).min(1, "Add at least one payment").max(50, "A batch can hold up to 50 payments"),
+  /** rowIds the user explicitly confirmed despite a "possible duplicate" warning. */
+  confirmedDuplicateRowIds: z.array(z.string()).default([]),
 });
 
 export const triageClientRequestSchema = z.object({

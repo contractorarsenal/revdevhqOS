@@ -109,6 +109,7 @@ beforeAll(async () => {
       billing_month date,
       method text,
       reference text,
+      note text,
       paid_at timestamptz NOT NULL,
       voided_at timestamptz,
       voided_by uuid,
