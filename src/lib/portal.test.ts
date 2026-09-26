@@ -127,9 +127,9 @@ describe("industry theming", () => {
 });
 
 describe("sidebar navigation order", () => {
-  it("matches the requested order exactly — the 6-item daily operating loop", () => {
+  it("Main group is the 5-item daily operating loop", () => {
     expect(SIDEBAR_PRIMARY_NAV.map((i) => i.label)).toEqual([
-      "Dashboard", "Leads", "Clients", "Projects", "Tasks", "Needs Jay",
+      "Dashboard", "Clients", "Projects", "Tasks", "Needs Jay",
     ]);
   });
 });

@@ -10,18 +10,29 @@ import type { WaitingOnParty } from "@/lib/validation";
 import type { DashboardOps } from "@/server/queries/dashboard";
 import { cn } from "@/lib/utils";
 
-/** Shared card chrome: small caps title, optional count chip + link. */
+export type WidgetTier = "primary" | "secondary" | "support";
+
+/** Widget chrome by importance. Primary widgets are the only ones with an
+ * outline; secondary and supporting widgets sit on a borderless surface so
+ * the page reads as a hierarchy instead of a wall of identical boxes. */
 export function Widget({
-  title, href, linkLabel = "Open", count, tone, children,
-}: { title: string; href?: string; linkLabel?: string; count?: number; tone?: "alert"; children: React.ReactNode }) {
+  title, href, linkLabel = "Open", count, tone, tier = "secondary", children,
+}: { title: string; href?: string; linkLabel?: string; count?: number; tone?: "alert"; tier?: WidgetTier; children: React.ReactNode }) {
   return (
-    <section className="flex h-full min-w-0 flex-col rounded-md border border-border bg-card">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</h2>
+    <section
+      className={cn(
+        "flex h-full min-w-0 flex-col overflow-hidden",
+        tier === "primary"
+          ? "rounded-xl border border-border bg-card shadow-sm"
+          : "rounded-lg bg-card/70 dark:bg-card/60"
+      )}
+    >
+      <header className={cn("flex items-center gap-2 px-4", tier === "primary" ? "border-b border-border/60 py-3" : "pb-1.5 pt-3")}>
+        <h2 className={cn("font-semibold tracking-tight", tier === "primary" ? "text-[13px]" : tier === "support" ? "text-[11px] uppercase tracking-[0.12em] text-muted-foreground" : "text-[12.5px]")}>{title}</h2>
         {count !== undefined && (
-          <span className={cn("rounded-sm px-1.5 text-[10.5px] font-semibold tabular-nums", tone === "alert" && count > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{count}</span>
+          <span className={cn("rounded-full px-1.5 text-[10.5px] font-semibold tabular-nums", tone === "alert" && count > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{count}</span>
         )}
-        {href && <Link href={href} className="ml-auto text-[11.5px] font-semibold text-primary hover:underline">{linkLabel}</Link>}
+        {href && <Link href={href} className="ml-auto rounded-sm text-[11.5px] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary">{linkLabel} →</Link>}
       </header>
       <div className="flex-1">{children}</div>
     </section>
@@ -31,9 +42,9 @@ export function Widget({
 const Empty = ({ children }: { children: React.ReactNode }) => <p className="px-4 py-5 text-[12.5px] text-muted-foreground">{children}</p>;
 const Row = ({ children, href }: { children: React.ReactNode; href?: string }) =>
   href ? (
-    <li className="border-t border-border first:border-t-0"><Link href={href} className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/50">{children}</Link></li>
+    <li className="border-t border-border/50 first:border-t-0"><Link href={href} className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/50">{children}</Link></li>
   ) : (
-    <li className="flex items-center gap-3 border-t border-border px-4 py-2.5 first:border-t-0">{children}</li>
+    <li className="flex items-center gap-3 border-t border-border/50 px-4 py-2.5 first:border-t-0">{children}</li>
   );
 
 export function NeedsJayWidget({ items }: { items: DashboardOps["approvals"] }) {
@@ -61,7 +72,7 @@ export function NeedsJayWidget({ items }: { items: DashboardOps["approvals"] }) 
 
 export function AttentionWidget({ items }: { items: DashboardOps["attention"] }) {
   return (
-    <Widget title="Projects needing attention" href="/projects" linkLabel="Projects" count={items.length} tone="alert">
+    <Widget tier="primary" title="Projects needing attention" href="/projects" linkLabel="Projects" count={items.length} tone="alert">
       {items.length === 0 ? <Empty>No projects are tripping an attention rule.</Empty> : (
         <ul>
           {items.map((p) => (
@@ -84,7 +95,7 @@ export function AttentionWidget({ items }: { items: DashboardOps["attention"] })
 
 export function TodaysWorkWidget({ items }: { items: DashboardOps["todaysWork"] }) {
   return (
-    <Widget title="Today's work" href="/tasks" linkLabel="Tasks" count={items.length}>
+    <Widget tier="primary" title="Today's work" href="/tasks" linkLabel="Tasks" count={items.length}>
       {items.length === 0 ? <Empty>Nothing overdue, due today, or high priority is assigned to you.</Empty> : (
         <ul>
           {items.map((t) => (
@@ -115,7 +126,7 @@ export function WaitingOnWidget({ groups }: { groups: DashboardOps["waitingGroup
       {total === 0 ? <Empty>No project is waiting on anyone.</Empty> : (
         <div>
           {PARTY_ORDER.filter((p) => groups[p].length > 0).map((p) => (
-            <div key={p} className="border-t border-border first:border-t-0">
+            <div key={p} className="border-t border-border/50 first:border-t-0">
               <p className="flex items-center gap-2 bg-muted/40 px-4 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 {WAITING_ON_LABEL[p]} <span className="tabular-nums">{groups[p].length}</span>
               </p>
@@ -246,7 +257,7 @@ export function UpcomingWidget({ ops }: { ops: DashboardOps }) {
     ...ops.deadlines.map((d) => ({ key: `d-${d.id}`, date: d.dueDate, title: `${d.name} — target date`, sub: d.clientName ?? "", href: `/projects/${d.id}` })),
   ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
   return (
-    <Widget title="Upcoming" href="/calendar" linkLabel="Calendar" count={items.length}>
+    <Widget tier="support" title="Upcoming" href="/calendar" linkLabel="Calendar" count={items.length}>
       {items.length === 0 ? <Empty>Nothing scheduled in the next 7 days.</Empty> : (
         <ul>
           {items.map((i) => (
@@ -267,7 +278,7 @@ export function UpcomingWidget({ ops }: { ops: DashboardOps }) {
 export function SalesPipelineWidget({ sales, pipelineValue, weighted }: { sales: DashboardOps["sales"]; pipelineValue: number; weighted: number }) {
   const max = Math.max(1, ...sales.stages.map((s) => s.count));
   return (
-    <Widget title="Sales pipeline" href="/pipeline" linkLabel="Pipeline">
+    <Widget tier="support" title="Sales pipeline" href="/pipeline" linkLabel="Pipeline">
       <p className="border-b border-border px-4 py-2 text-[11px] text-muted-foreground">Contractor Arsenal prospects only — separate from client website leads.</p>
       <div className="grid grid-cols-3 gap-px border-b border-border bg-border text-center">
         {[["Open leads", String(sales.openLeads)], ["Pipeline", formatMoney(pipelineValue)], ["Weighted", formatMoney(weighted)]].map(([k, v]) => (
@@ -291,7 +302,7 @@ export function SalesPipelineWidget({ sales, pipelineValue, weighted }: { sales:
 
 export function ClientLeadsWidget({ data }: { data: DashboardOps["clientLeads"] }) {
   return (
-    <Widget title="Client website leads" href="/clients" linkLabel="Clients">
+    <Widget tier="support" title="Client website leads" href="/clients" linkLabel="Clients">
       <p className="border-b border-border px-4 py-2 text-[11px] text-muted-foreground">Leads generated FOR our clients — separate from the sales pipeline.</p>
       <div className="grid grid-cols-3 gap-px bg-border text-center">
         {[["Today", data.today], ["This week", data.week], ["Need response", data.needsResponse]].map(([k, v]) => (
@@ -308,7 +319,7 @@ export function ClientLeadsWidget({ data }: { data: DashboardOps["clientLeads"] 
 export function TeamWorkloadWidget({ items }: { items: DashboardOps["workload"] }) {
   const max = Math.max(1, ...items.map((w) => w.open));
   return (
-    <Widget title="Team workload" href="/tasks" linkLabel="Tasks">
+    <Widget tier="support" title="Team workload" href="/tasks" linkLabel="Tasks">
       {items.length === 0 ? <Empty>No open tasks.</Empty> : (
         <ul className="space-y-2 px-4 py-3">
           {items.map((w) => (
@@ -330,7 +341,7 @@ export function TeamWorkloadWidget({ items }: { items: DashboardOps["workload"] 
 
 export function ActivityWidget({ items }: { items: ActivityItem[] }) {
   return (
-    <Widget title="Recent activity">
+    <Widget tier="support" title="Recent activity">
       <div className="px-4 py-3"><ActivityTimeline items={items} /></div>
     </Widget>
   );

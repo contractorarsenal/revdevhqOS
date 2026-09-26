@@ -137,7 +137,7 @@
    than by hue — see src/components/ui/button.tsx. ===== */
 :root {
   color-scheme: light;
-  --background: #fafafa;
+  --background: #f4f4f5;
   --foreground: #111111;
   --card: #ffffff;
   --card-foreground: #111111;
@@ -155,7 +155,7 @@
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #9a1f1f;
-  --sidebar: #f7f7f8;
+  --sidebar: #ffffff;
   --sidebar-foreground: #111111;
   --sidebar-primary: #9a1f1f;
   --sidebar-primary-foreground: #ffffff;
@@ -191,7 +191,7 @@
   --border: #26262b;
   --input: #2d2d33;
   --ring: #d03a3a;
-  --sidebar: #0e0e10;
+  --sidebar: #111114;
   --sidebar-foreground: #f4f4f5;
   --sidebar-primary: #d03a3a;
   --sidebar-primary-foreground: #ffffff;

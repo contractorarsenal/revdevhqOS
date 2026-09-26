@@ -5,8 +5,12 @@ export type DashboardLayout = { order: DashboardWidgetId[]; hidden: DashboardWid
 
 /** Default composition: what needs attention first, context and money after. */
 export const DEFAULT_DASHBOARD_ORDER: DashboardWidgetId[] = [
-  "needs_jay", "attention", "todays_work", "waiting_on", "project_health", "client_requests",
-  "financial", "upcoming", "sales_pipeline", "client_leads", "team_workload", "activity",
+  // primary: what to do now
+  "todays_work", "attention",
+  // secondary: state of the work and the money
+  "needs_jay", "waiting_on", "client_requests", "project_health", "financial",
+  // supporting context
+  "upcoming", "sales_pipeline", "client_leads", "team_workload", "activity",
 ];
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = { order: DEFAULT_DASHBOARD_ORDER, hidden: [] };

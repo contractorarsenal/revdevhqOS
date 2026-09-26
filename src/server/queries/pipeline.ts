@@ -30,6 +30,7 @@ export async function listPipeline(workspaceId: string) {
       leadId: opportunities.leadId,
       clientId: opportunities.clientId,
       createdAt: opportunities.createdAt,
+      updatedAt: opportunities.updatedAt,
     })
     .from(opportunities)
     .leftJoin(profiles, eq(opportunities.ownerId, profiles.id))

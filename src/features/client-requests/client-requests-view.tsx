@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -146,7 +147,11 @@ export function ClientRequestsView({
               <div className="flex flex-wrap items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[13.5px] font-semibold">{r.clientName ?? "Unknown client"}</p>
+                    {r.clientId ? (
+                      <Link href={`/clients/${r.clientId}`} className="rounded-sm text-[13.5px] font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary">{r.clientName ?? "Unknown client"}</Link>
+                    ) : (
+                      <p className="text-[13.5px] font-semibold">{r.clientName ?? "Unknown client"}</p>
+                    )}
                     <StatusBadge status={r.type} tone="neutral" />
                     <StatusBadge status={r.priority} />
                   </div>

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Users, Plus, Trash2, RotateCcw, ExternalLink } from "lucide-react";
+import { Users, Plus, Trash2, RotateCcw, ExternalLink, MoreHorizontal, Copy, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { type ClientRow } from "@/server/queries/clients";
 import { archiveClient, restoreClient } from "@/server/actions/clients";
@@ -16,8 +16,10 @@ import { FinancialAmount } from "@/components/shared/financial-amount";
 import { DataTable, sortableHeader } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmationDialog } from "@/components/shared/confirmation-dialog";
-import { DetailDrawer } from "@/components/shared/detail-drawer";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ClientFormDialog, type MemberOption } from "./client-form-dialog";
 import { formatMoney } from "@/lib/finance/metrics";
 import { cn } from "@/lib/utils";
@@ -30,7 +32,7 @@ export function ClientsView({
   const router = useRouter();
   const [tab, setTab] = useState<(typeof TABS)[number]>("all");
   const [formOpen, setFormOpen] = useState(openNew);
-  const [preview, setPreview] = useState<ClientRow | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<ClientRow | null>(null);
   // Optimistic removal: rows disappear the moment removal is confirmed and
   // reappear only if the server rejects it.
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(new Set());
@@ -75,6 +77,7 @@ export function ClientsView({
     },
     {
       id: "contact",
+      meta: { className: "hidden md:table-cell" },
       header: "Primary contact",
       cell: ({ row }) =>
         row.original.primaryContact ? (
@@ -88,6 +91,7 @@ export function ClientsView({
     },
     {
       accessorKey: "serviceCount",
+      meta: { className: "hidden md:table-cell" },
       header: "Services",
       cell: ({ row }) => <span className="tabular-nums">{row.original.serviceCount}</span>,
     },
@@ -98,6 +102,7 @@ export function ClientsView({
     },
     {
       id: "billing",
+      meta: { className: "hidden md:table-cell" },
       header: "Billing",
       cell: ({ row }) =>
         row.original.pastDueBalance > 0 ? (
@@ -113,49 +118,60 @@ export function ClientsView({
     },
     {
       accessorKey: "ownerName",
+      meta: { className: "hidden md:table-cell" },
       header: "Owner",
       cell: ({ row }) => row.original.ownerName ?? <span className="text-muted-foreground">—</span>,
     },
     {
       id: "actions",
       header: "",
-      cell: ({ row }) => (
-        <span className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-xs">
-            <Link href={`/clients/${row.original.id}`}>Open</Link>
-          </Button>
-          {row.original.status !== "archived" ? (
-            <ConfirmationDialog
-              trigger={
-                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" title="Remove client">
-                  <Trash2 className="size-3.5" />
+      cell: ({ row }) => {
+        const client = row.original;
+        const email = client.primaryContact?.email;
+        return (
+          <span className="flex items-center justify-end gap-0.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" aria-label={`More actions for ${client.name}`} data-row-action>
+                  <MoreHorizontal className="size-4" />
                 </Button>
-              }
-              title="Remove this client?"
-              description={`Are you sure you want to remove ${row.original.name}? This will remove them from your active client list. Invoices, payments, and tasks are kept, and the client can be restored from the Archived tab.`}
-              confirmLabel="Remove client"
-              destructive
-              onConfirm={() => removeClient(row.original)}
-            />
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={async () => {
-                const result = await restoreClient(row.original.id);
-                if (!result.ok) toast.error(result.error);
-                else {
-                  toast.success("Client restored");
-                  router.refresh();
-                }
-              }}
-            >
-              <RotateCcw className="size-3.5" /> Restore
-            </Button>
-          )}
-        </span>
-      ),
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link href={`/clients/${client.id}`} className="flex items-center gap-2"><ExternalLink className="size-4 text-muted-foreground" /> Open client</Link>
+                </DropdownMenuItem>
+                {email && (
+                  <DropdownMenuItem
+                    onSelect={async () => {
+                      try { await navigator.clipboard.writeText(email); toast.success("Email copied"); }
+                      catch { toast.error("Could not copy the email."); }
+                    }}
+                  >
+                    <Copy className="size-4 text-muted-foreground" /> Copy email
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                {client.status !== "archived" ? (
+                  <DropdownMenuItem variant="destructive" onSelect={() => setRemoveTarget(client)}>
+                    <Trash2 className="size-4" /> Remove client
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    onSelect={async () => {
+                      const result = await restoreClient(client.id);
+                      if (!result.ok) toast.error(result.error);
+                      else { toast.success("Client restored"); router.refresh(); }
+                    }}
+                  >
+                    <RotateCcw className="size-4 text-muted-foreground" /> Restore client
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <ChevronRight aria-hidden className="size-4 text-muted-foreground/40 transition-colors group-hover/row:text-foreground" />
+          </span>
+        );
+      },
     },
   ];
 
@@ -208,62 +224,23 @@ export function ClientsView({
           columns={columns}
           data={filtered}
           searchPlaceholder="Search clients…"
-          onRowClick={(row) => setPreview(row)}
+          getRowHref={(row) => `/clients/${row.id}`}
+          rowLabel={(row) => `Open ${row.name}`}
           emptyMessage="No clients match this filter."
         />
       )}
 
       <ClientFormDialog open={formOpen} onOpenChange={setFormOpen} members={members} />
 
-      <DetailDrawer
-        open={Boolean(preview)}
-        onOpenChange={(o) => !o && setPreview(null)}
-        title={
-          preview && (
-            <span className="flex items-center gap-2.5">
-              <ClientAvatar name={preview.name} className="size-8 text-xs" /> {preview.name}
-            </span>
-          )
-        }
-        description={preview?.industry ?? undefined}
-        footer={
-          preview && (
-            <Button asChild size="sm" className="gap-1.5">
-              <Link href={`/clients/${preview.id}`}>
-                View full client <ExternalLink className="size-3.5" />
-              </Link>
-            </Button>
-          )
-        }
-      >
-        {preview && (
-          <dl className="grid grid-cols-[130px_1fr] gap-y-2.5 text-[12.5px]">
-            <dt className="text-muted-foreground">Status</dt>
-            <dd><StatusBadge status={preview.status} /></dd>
-            <dt className="text-muted-foreground">MRR</dt>
-            <dd><FinancialAmount value={preview.mrr} suffix="/mo" /></dd>
-            <dt className="text-muted-foreground">Past-due balance</dt>
-            <dd>
-              <FinancialAmount value={preview.pastDueBalance} className={preview.pastDueBalance > 0 ? "text-destructive" : undefined} />
-            </dd>
-            <dt className="text-muted-foreground">Owner</dt>
-            <dd>{preview.ownerName ?? "—"}</dd>
-            <dt className="text-muted-foreground">Primary contact</dt>
-            <dd>
-              {preview.primaryContact ? (
-                <>
-                  {preview.primaryContact.name}
-                  <span className="block text-[11px] text-muted-foreground">{preview.primaryContact.email}</span>
-                </>
-              ) : ("—")}
-            </dd>
-            <dt className="text-muted-foreground">Active services</dt>
-            <dd className="tabular-nums">{preview.serviceCount}</dd>
-            <dt className="text-muted-foreground">Client since</dt>
-            <dd>{preview.startDate ?? "—"}</dd>
-          </dl>
-        )}
-      </DetailDrawer>
+      <ConfirmationDialog
+        open={Boolean(removeTarget)}
+        onOpenChange={(o) => !o && setRemoveTarget(null)}
+        title="Remove this client?"
+        description={`Are you sure you want to remove ${removeTarget?.name ?? "this client"}? This will remove them from your active client list. Invoices, payments, and tasks are kept, and the client can be restored from the Archived tab.`}
+        confirmLabel="Remove client"
+        destructive
+        onConfirm={() => { if (removeTarget) return removeClient(removeTarget); }}
+      />
     </div>
   );
 }

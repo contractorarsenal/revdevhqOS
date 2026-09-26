@@ -1,5 +1,6 @@
 "use client";
 
+import { isRowActivation } from "@/components/shared/data-table";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -39,9 +40,12 @@ function TaskRowItem({
   const related = task.clientName ?? task.leadCompany ?? task.opportunityName;
   const done = task.status === "completed";
   return (
-    <li className="flex items-center gap-3 border-t border-border/40 px-4 py-2.5 first:border-t-0 hover:bg-muted/30">
+    <li
+      className="flex cursor-pointer items-center gap-3 border-t border-border/40 px-4 py-2.5 transition-colors first:border-t-0 hover:bg-accent/50 active:bg-accent"
+      onClick={(e) => { if (isRowActivation(e)) onEdit(task); }}
+    >
       <Checkbox checked={done} onCheckedChange={(v) => onToggle(task, v === true)} aria-label="Complete task" />
-      <button className="min-w-0 flex-1 text-left" onClick={() => onEdit(task)}>
+      <button className="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onEdit(task)}>
         <p className={cn("truncate text-[13px] font-medium", done && "text-muted-foreground line-through")}>{task.title}</p>
         <p className="truncate text-[11.5px] text-muted-foreground">
           {task.projectName ? `${task.projectName} · ` : ""}

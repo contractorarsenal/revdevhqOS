@@ -31,11 +31,11 @@ export function ProjectsView({ projects, members, clients }: { projects: any[]; 
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {active.map((p) => (
-            <div key={p.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            <div key={p.id} className="group/card relative rounded-lg border border-border bg-card p-4 shadow-sm transition-colors hover:border-foreground/25 hover:bg-accent/30 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-primary active:bg-accent/50">
               <div className="flex items-start gap-2">
                 <span className="mt-1 size-2.5 shrink-0 rounded-full" style={{ backgroundColor: p.color ?? "#71717a" }} />
                 <div className="min-w-0 flex-1">
-                  <Link href={`/projects/${p.id}`} className="truncate text-[13.5px] font-semibold hover:underline">{p.name}</Link>
+                  <Link href={`/projects/${p.id}`} className="block truncate text-[13.5px] font-semibold outline-none after:absolute after:inset-0 after:content-['']">{p.name}</Link>
                   <p className="mt-0.5 text-[11.5px] text-muted-foreground">{p.clientName ?? "Internal"} · {p.ownerName ?? "Unassigned"}</p>
                 </div>
                 <StatusBadge status={p.status} />
@@ -54,7 +54,7 @@ export function ProjectsView({ projects, members, clients }: { projects: any[]; 
                 <p className="mt-0.5 truncate text-[11px] text-muted-foreground"><span className="font-medium text-foreground">Next: </span>{p.nextAction}</p>
               )}
               <p className="mt-1.5 text-[10.5px] text-muted-foreground">Updated {formatDistanceToNow(new Date(p.updatedAt), { addSuffix: true })}</p>
-              <div className="mt-3 flex justify-end">
+              <div className="relative z-10 mt-3 flex justify-end">
                 <ConfirmationDialog
                   trigger={<Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-muted-foreground"><Archive className="size-3.5" /> Archive</Button>}
                   title="Archive this project?" description="It will be hidden from the active list; its tasks are kept." confirmLabel="Archive" destructive

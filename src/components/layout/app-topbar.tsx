@@ -1,66 +1,45 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, UserPlus, Target, Kanban, FileText, DollarSign, CheckSquare, ListPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TabletNavDrawer } from "@/components/layout/tablet-nav-drawer";
-import { getPageTitle } from "@/components/layout/nav-items";
+import { QuickAdd } from "@/components/layout/quick-add";
+import { getPageGroup, getPageTitle } from "@/components/layout/nav-items";
 
-const QUICK_ADD = [
-  { href: "/clients?new=1", label: "Add client", icon: UserPlus },
-  { href: "/leads?new=1", label: "Add lead", icon: Target },
-  { href: "/pipeline?new=1", label: "Add opportunity", icon: Kanban },
-  { href: "/billing?tab=invoices&new=1", label: "Create invoice", icon: FileText },
-  { href: "/billing?tab=payments&new=1", label: "Record payment", icon: DollarSign },
-  { href: "/billing?tab=payments&bulk=1", label: "Bulk add payments", icon: ListPlus },
-  { href: "/tasks?new=1", label: "Add task", icon: CheckSquare },
-];
-
+/** Page header. It is part of the content area, not a second full-width
+ * navigation bar: no fill or divider, quiet breadcrumb on the left, actions
+ * on the right. Phones get the title plus a floating Quick Add instead. */
 export function AppTopbar({ workspaceName, userName, role }: { workspaceName: string; userName: string; role: string }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
+  const group = getPageGroup(pathname);
+  const initials = userName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 flex h-[52px] items-center gap-2 border-b border-border bg-card px-3 sm:px-5">
+    <header className="z-30 flex h-12 shrink-0 items-center gap-2 px-4 sm:px-6 lg:h-14 lg:pr-3">
       <TabletNavDrawer workspaceName={workspaceName} userName={userName} role={role} />
-      {/* Below lg the sidebar is hidden, so the current page title is the
-          primary orientation cue; the workspace name is demoted to a small
-          caption so a long name can never push Quick Add off-screen. */}
-      <div className="min-w-0 flex-1 lg:flex-initial">
-        <p className="truncate text-[14px] font-semibold leading-tight text-foreground lg:hidden">{title}</p>
-        <p className="hidden truncate text-[13px] text-muted-foreground lg:block">
-          <span className="font-medium text-foreground">{workspaceName}</span>
-        </p>
-        <p className="truncate text-[11px] leading-tight text-muted-foreground lg:hidden">{workspaceName}</p>
+      <div className="min-w-0 flex-1">
+        {/* Phones/tablets: page title with the (truncating) workspace as caption. */}
+        <div className="lg:hidden">
+          <p className="truncate text-[15px] font-semibold leading-tight tracking-tight">{title}</p>
+          <p className="truncate text-[11px] leading-tight text-muted-foreground">{workspaceName}</p>
+        </div>
+        {/* Desktop: quiet breadcrumb — the page's own heading stays the loudest element. */}
+        <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground lg:flex">
+          <span className="truncate">{workspaceName}</span>
+          {group && group !== "Main" && (<><span aria-hidden className="text-muted-foreground/50">/</span><span className="truncate">{group}</span></>)}
+          <span aria-hidden className="text-muted-foreground/50">/</span>
+          <span className="truncate font-medium text-foreground">{title}</span>
+        </nav>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <QuickAdd />
         <ThemeToggle />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" className="gap-1.5 px-2.5 sm:px-3">
-              <Plus className="size-3.5" /> <span className="hidden sm:inline">Quick Add</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel>Quick add</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {QUICK_ADD.map((item) => (
-              <DropdownMenuItem key={item.href} asChild>
-                <Link href={item.href} className="flex items-center gap-2">
-                  <item.icon className="size-4 text-muted-foreground" /> {item.label}
-                </Link>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <div className="hidden size-7 shrink-0 items-center justify-center rounded-full bg-primary text-[10.5px] font-semibold text-primary-foreground lg:flex">
-          {userName.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+        <div
+          title={`${userName} · ${role}`}
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
+        >
+          {initials}
         </div>
       </div>
     </header>

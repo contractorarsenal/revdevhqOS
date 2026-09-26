@@ -8,19 +8,25 @@ import { Button } from "@/components/ui/button";
 
 export function ConfirmationDialog({
   trigger, title, description, confirmLabel = "Confirm", destructive = false, onConfirm,
+  open: controlledOpen, onOpenChange,
 }: {
-  trigger: React.ReactNode;
+  /** Omit when driving the dialog with `open`/`onOpenChange` (e.g. from a menu item). */
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   description: string;
   confirmLabel?: string;
   destructive?: boolean;
   onConfirm: () => Promise<void> | void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const open = controlledOpen ?? innerOpen;
+  const setOpen = (next: boolean) => { setInnerOpen(next); onOpenChange?.(next); };
   const [pending, startTransition] = useTransition();
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

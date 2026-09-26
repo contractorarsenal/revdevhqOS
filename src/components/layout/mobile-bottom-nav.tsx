@@ -19,7 +19,7 @@ export function MobileBottomNav({ pendingApprovals = 0 }: { pendingApprovals?: n
     <>
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-40 flex min-h-16 items-stretch border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 flex min-h-16 items-stretch border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       >
         {MOBILE_PRIMARY_NAV.map((item) => {
           const isMore = item.href === "/more";

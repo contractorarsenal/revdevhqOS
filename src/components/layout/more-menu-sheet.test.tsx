@@ -13,7 +13,7 @@ import { MoreMenuSheet } from "./more-menu-sheet";
 describe("MoreMenuSheet", () => {
   it("groups every secondary destination and includes sign out", () => {
     render(<MoreMenuSheet open onOpenChange={() => {}} />);
-    for (const group of ["Sales", "Work", "Finance", "Account"]) {
+    for (const group of ["Work", "Sales", "Operations", "Business", "System"]) {
       expect(screen.getByText(group)).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: /Sign out/ })).toBeInTheDocument();

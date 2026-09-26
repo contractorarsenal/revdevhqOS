@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_DASHBOARD_LAYOUT, type DashboardLayout, type DashboardWidgetId } from "@/lib/dashboard-layout";
 import { resetDashboardLayout, saveDashboardLayout } from "@/server/actions/dashboard";
 
-export type DashboardWidgetDef = { id: DashboardWidgetId; title: string; wide?: boolean; node: React.ReactNode };
+/** `span` = column span at xl on the 12-column grid (primary 6, secondary/support 4, wide 8). */
+export type DashboardWidgetDef = { id: DashboardWidgetId; title: string; span?: 4 | 6 | 8 | 12; node: React.ReactNode };
+
+const SPAN: Record<number, string> = { 4: "xl:col-span-4", 6: "xl:col-span-6", 8: "xl:col-span-8", 12: "xl:col-span-12" };
 
 function SortableWidget({ def, editing, onHide }: { def: DashboardWidgetDef; editing: boolean; onHide: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: def.id, disabled: !editing });
@@ -21,7 +24,7 @@ function SortableWidget({ def, editing, onHide }: { def: DashboardWidgetDef; edi
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("min-w-0", def.wide && "xl:col-span-2", isDragging && "z-20 opacity-80")}
+      className={cn("min-w-0", SPAN[def.span ?? 4], (def.span ?? 4) >= 6 && "lg:col-span-2", isDragging && "z-20 opacity-80")}
     >
       {editing ? (
         <div className="rounded-md border border-dashed border-primary/60">
@@ -127,7 +130,7 @@ export function DashboardGrid({ widgets, layout }: { widgets: DashboardWidgetDef
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={visible} strategy={rectSortingStrategy}>
-          <div className="grid grid-flow-row-dense grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-flow-row-dense grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-12">
             {visible.map((id) => (
               <SortableWidget key={id} def={byId.get(id)!} editing={editing} onHide={() => hide(id)} />
             ))}
