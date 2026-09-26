@@ -6,7 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
-import { projectSchema, PROJECT_STATUSES } from "@/lib/validation";
+import { projectSchema, PROJECT_STATUSES, WAITING_ON_PARTIES } from "@/lib/validation";
+import { WAITING_ON_LABEL } from "@/lib/project-ops";
 import { PROJECT_STATUS_LABEL } from "./project-status";
 import { createProject, updateProject } from "@/server/actions/projects";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -26,7 +27,8 @@ export function ProjectFormDialog({
   clients: { id: string; name: string }[];
   project?: {
     id: string; name: string; description: string | null; status: string; ownerId: string | null; clientId: string | null;
-    startDate: string | null; dueDate: string | null; waitingOn?: string | null; nextAction?: string | null; color: string | null;
+    startDate: string | null; dueDate: string | null; waitingOn?: string | null; waitingOnParty?: string | null; nextAction?: string | null; color: string | null;
+    clientVisible?: boolean; clientSummary?: string | null;
   } | null;
 }) {
   const router = useRouter();
@@ -47,7 +49,10 @@ export function ProjectFormDialog({
         startDate: project?.startDate ?? "",
         dueDate: project?.dueDate ?? "",
         waitingOn: project?.waitingOn ?? "",
+        waitingOnParty: (project?.waitingOnParty as FormValues["waitingOnParty"]) ?? "",
         nextAction: project?.nextAction ?? "",
+        clientVisible: project?.clientVisible ?? false,
+        clientSummary: project?.clientSummary ?? "",
         color: project?.color ?? COLORS[0],
       });
     }
@@ -117,6 +122,26 @@ export function ProjectFormDialog({
               <Input {...form.register("nextAction")} placeholder="Send revised proposal" />
             </div>
           </div>
+          <div className="space-y-1">
+            <Label>Waiting on (who) <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <select {...form.register("waitingOnParty")} className="h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm">
+              <option value="">Not specified</option>
+              {WAITING_ON_PARTIES.map((p) => <option key={p} value={p}>{WAITING_ON_LABEL[p]}</option>)}
+            </select>
+          </div>
+          {form.watch("clientId") && (
+            <div className="space-y-2 rounded-md border border-border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" {...form.register("clientVisible")} className="size-4 accent-[var(--primary)]" />
+                Show in client portal
+              </label>
+              <div className="space-y-1">
+                <Label>Client-facing summary</Label>
+                <Input {...form.register("clientSummary")} placeholder="What the client should know about this project" />
+                <p className="text-[11px] text-muted-foreground">Clients only ever see this summary — never the internal description or notes.</p>
+              </div>
+            </div>
+          )}
           <div className="space-y-1">
             <Label>Color</Label>
             <div className="flex gap-1.5">

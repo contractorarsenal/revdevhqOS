@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { toast } from "sonner";
-import { Plus, CreditCard, FileText, DollarSign, Package, Pause, Play, XCircle, Archive, CheckCircle2, Trash2, Pencil, RotateCcw } from "lucide-react";
+import { Plus, ListPlus, CreditCard, FileText, DollarSign, Package, Pause, Play, XCircle, Archive, CheckCircle2, Trash2, Pencil, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { MetricCard, MetricGrid } from "@/components/shared/metric-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -20,6 +20,7 @@ import { ServiceFormDialog } from "./service-form-dialog";
 import { SubscriptionFormDialog } from "./subscription-form-dialog";
 import { InvoiceFormDialog } from "./invoice-form-dialog";
 import { PaymentFormDialog } from "./payment-form-dialog";
+import { BulkPaymentsDialog } from "./bulk-payments-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function monthLabel(billingMonth: string | null): string {
@@ -74,11 +75,11 @@ type Metrics = {
 };
 
 export function BillingView({
-  services, subscriptions, invoices, payments, clients, metrics, initialTab, openNew, highlightInvoiceId,
+  services, subscriptions, invoices, payments, clients, metrics, initialTab, openNew, highlightInvoiceId, today, openBulk,
 }: {
   services: any[]; subscriptions: any[]; invoices: any[]; payments: any[];
   clients: { id: string; name: string }[]; metrics: Metrics;
-  initialTab?: string; openNew?: boolean; highlightInvoiceId?: string;
+  initialTab?: string; openNew?: boolean; highlightInvoiceId?: string; today: string; openBulk?: boolean;
 }) {
   const router = useRouter();
   const validTabs = ["subscriptions", "invoices", "payments", "services"];
@@ -88,6 +89,7 @@ export function BillingView({
   const [subForm, setSubForm] = useState(Boolean(openNew) && tab === "subscriptions");
   const [invoiceForm, setInvoiceForm] = useState(Boolean(openNew) && tab === "invoices");
   const [paymentForm, setPaymentForm] = useState(Boolean(openNew) && tab === "payments");
+  const [bulkOpen, setBulkOpen] = useState(Boolean(openBulk));
   const [editPayment, setEditPayment] = useState<any>(null);
 
   const suggestedNumber = `INV-${String(1000 + invoices.length + 1)}`;
@@ -356,6 +358,9 @@ export function BillingView({
         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPaymentForm(true)}>
           <DollarSign className="size-3.5" /> Record Payment
         </Button>
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setBulkOpen(true)}>
+          <ListPlus className="size-3.5" /> Bulk add payments
+        </Button>
         <Button size="sm" className="gap-1.5" onClick={() => setInvoiceForm(true)}>
           <Plus className="size-3.5" /> Create Invoice
         </Button>
@@ -444,6 +449,7 @@ export function BillingView({
       <SubscriptionFormDialog open={subForm} onOpenChange={setSubForm} clients={clients} services={services.filter((s) => !s.archivedAt)} />
       <InvoiceFormDialog open={invoiceForm} onOpenChange={setInvoiceForm} clients={clients} suggestedNumber={suggestedNumber} />
       <PaymentFormDialog open={paymentForm} onOpenChange={setPaymentForm} clients={clients} invoices={invoices} />
+      <BulkPaymentsDialog open={bulkOpen} onOpenChange={setBulkOpen} clients={clients} subscriptions={subscriptions} invoices={invoices} today={today} />
       <PaymentFormDialog
         open={Boolean(editPayment)}
         onOpenChange={(o) => !o && setEditPayment(null)}

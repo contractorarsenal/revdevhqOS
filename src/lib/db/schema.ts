@@ -329,6 +329,7 @@ export const payments = pgTable("payments", {
   billingMonth: date("billing_month"),
   method: text("method"),
   reference: text("reference"),
+  note: text("note"),
   paidAt: timestamp("paid_at", { withTimezone: true }).notNull(),
   voidedAt: timestamp("voided_at", { withTimezone: true }),
   voidedBy: uuid("voided_by").references(() => profiles.id, { onDelete: "set null" }),
@@ -432,7 +433,15 @@ export const projects = pgTable("projects", {
   // lifecycle value (see CURRENT STAGE / WAITING ON / NEXT ACTION on the
   // project detail view).
   waitingOn: text("waiting_on"),
+  // Structured "who" for waitingOn — client | ca | jay | third_party | other.
+  // Kept as data (not inferred from free text) so dashboards and future
+  // automation can rely on it.
+  waitingOnParty: text("waiting_on_party"),
   nextAction: text("next_action"),
+  // Client portal: a project is invisible to clients until staff opt it in,
+  // and clients only ever see clientSummary — never the internal description.
+  clientVisible: boolean("client_visible").notNull().default(false),
+  clientSummary: text("client_summary"),
   // Set when status transitions to "completed"; used by goal metrics to
   // attribute a completion to a specific period. Cleared if reopened.
   completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -462,6 +471,8 @@ export const tasks = pgTable("tasks", {
   scheduledEndTime: text("scheduled_end_time"),
   allDay: boolean("all_day").notNull().default(false),
   calendarVisible: boolean("calendar_visible").notNull().default(true),
+  // Client portal checklist: only tasks explicitly flagged are shown to clients.
+  clientVisible: boolean("client_visible").notNull().default(false),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -681,7 +692,10 @@ export const clientRequests = pgTable("client_requests", {
   priority: taskPriority("priority").notNull().default("medium"),
   submittedBy: uuid("submitted_by").references(() => profiles.id, { onDelete: "set null" }),
   taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   resolutionNotes: text("resolution_notes"),
+  // Client-visible latest update from staff (resolutionNotes stays internal).
+  clientUpdate: text("client_update"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [
@@ -709,3 +723,48 @@ export const clientPortalMemberships = pgTable("client_portal_memberships", {
   index("client_portal_memberships_profile_idx").on(t.profileId),
   index("client_portal_memberships_workspace_client_idx").on(t.workspaceId, t.clientId),
 ]);
+
+
+/** Project updates posted by staff. Only rows with clientVisible = true are
+ * ever shown in the client portal. */
+export const projectUpdates = pgTable("project_updates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id").references(() => profiles.id, { onDelete: "set null" }),
+  body: text("body").notNull(),
+  clientVisible: boolean("client_visible").notNull().default(false),
+  createdAt: createdAt(),
+}, (t) => [index("project_updates_project_idx").on(t.projectId, t.createdAt)]);
+
+/** File metadata. Bytes live in the private "client-files" Supabase Storage
+ * bucket under <workspaceId>/<clientId>/...; the row is the authorization
+ * record — nothing is ever served without matching this row to the caller. */
+export const clientFiles = pgTable("client_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  storagePath: text("storage_path").notNull(),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  mimeType: text("mime_type"),
+  category: text("category").notNull().default("other"),
+  uploadedBy: uuid("uploaded_by").references(() => profiles.id, { onDelete: "set null" }),
+  uploadedByClient: boolean("uploaded_by_client").notNull().default(false),
+  status: text("status").notNull().default("pending"),
+  createdAt: createdAt(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("client_files_storage_path_unique").on(t.storagePath),
+  index("client_files_workspace_client_idx").on(t.workspaceId, t.clientId),
+]);
+
+/** Per-user dashboard layout (widget order + hidden widgets). */
+export const userDashboardPrefs = pgTable("user_dashboard_prefs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  layout: jsonb("layout").notNull(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("user_dashboard_prefs_profile_workspace_unique").on(t.profileId, t.workspaceId)]);

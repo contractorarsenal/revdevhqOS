@@ -12,7 +12,7 @@ import { clientRequestSchema, updateClientRequestStatusSchema, triageClientReque
 function revalidateClientRequests(clientId: string) {
   revalidatePath("/client-requests");
   revalidatePath(`/clients/${clientId}`);
-  revalidatePath("/portal/requests");
+  revalidatePath("/clientportal/requests");
 }
 
 /** Staff logging a request on the client's behalf (e.g. a phone call) —
@@ -66,7 +66,11 @@ export async function updateClientRequestStatus(id: string, input: unknown): Pro
 
     await db
       .update(clientRequests)
-      .set({ status: data.status, resolutionNotes: data.resolutionNotes ?? existing.resolutionNotes })
+      .set({
+        status: data.status,
+        resolutionNotes: data.resolutionNotes ?? existing.resolutionNotes,
+        clientUpdate: data.clientUpdate === undefined ? existing.clientUpdate : data.clientUpdate,
+      })
       .where(eq(clientRequests.id, id));
 
     await logActivity({
@@ -75,6 +79,8 @@ export async function updateClientRequestStatus(id: string, input: unknown): Pro
       clientId: existing.clientId, metadata: { status: data.status, previousStatus: existing.status },
     });
     revalidateClientRequests(existing.clientId);
+    revalidatePath("/clientportal/requests");
+    revalidatePath("/clientportal/dashboard");
     return { ok: true };
   } catch (err) {
     return actionError(err);

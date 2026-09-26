@@ -10,6 +10,7 @@ import { serviceSchema, subscriptionSchema, subscriptionEditSchema, invoiceSchem
 import { roundCents, toAmount, recalcInvoiceForPaymentChange, paymentAttribution, currentDueMonth } from "@/lib/finance/metrics";
 import { revalidateGoalPaths as revalidateGoals } from "./revalidate-goals";
 import { todayInTimezone } from "@/lib/date-tz";
+import { createPayment } from "@/server/services/payments";
 
 function revalidateBilling(clientId?: string | null) {
   revalidatePath("/billing");
@@ -283,73 +284,21 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
   try {
     const ctx = await authorize("manager");
     const data = paymentSchema.parse(input);
-
-    let invoice = null;
-    if (data.invoiceId) {
-      const [inv] = await db
-        .select()
-        .from(invoices)
-        .where(and(eq(invoices.id, data.invoiceId), eq(invoices.workspaceId, ctx.workspace.id)))
-        .limit(1);
-      if (!inv) throw new Error("Invoice not found in this workspace.");
-      invoice = inv;
-    }
-    if (data.clientId) {
-      const [client] = await db
-        .select({ id: clients.id })
-        .from(clients)
-        .where(and(eq(clients.id, data.clientId), eq(clients.workspaceId, ctx.workspace.id)))
-        .limit(1);
-      if (!client) throw new Error("Client not found in this workspace.");
-    }
-
-    // The invoice is authoritative for attribution: payments applied to an
-    // invoice always belong to the invoice's client and inherit its billing
-    // metadata — a mismatched request clientId cannot shift revenue between
-    // clients while reducing another client's invoice balance.
-    const attribution = paymentAttribution(invoice, {
-      clientId: data.clientId,
-      paymentType: data.paymentType,
-      billingMonth: data.billingMonth ? `${data.billingMonth}-01` : null,
-    });
-    const billingMonth = attribution.billingMonth ?? `${data.paidAt.slice(0, 7)}-01`;
-
-    await db.transaction(async (tx) => {
-      await tx.insert(payments).values({
-        workspaceId: ctx.workspace.id,
-        clientId: attribution.clientId,
-        invoiceId: data.invoiceId ?? null,
-        amount: String(data.amount),
-        status: data.status,
-        paymentType: attribution.paymentType as typeof data.paymentType,
-        billingMonth,
-        method: data.method ?? null,
-        reference: data.reference ?? null,
-        paidAt: new Date(data.paidAt),
-      });
-      if (invoice && data.status === "succeeded") {
-        // Re-read under a row lock immediately before computing the new
-        // balance — the pre-transaction `invoice` read above is only used
-        // for attribution (clientId/type/month), which can't race; the
-        // actual balance must come from a locked, current value or two
-        // concurrent payments would both add to the same stale amountPaid.
-        const [locked] = await tx.select().from(invoices).where(eq(invoices.id, invoice.id)).for("update");
-        const newPaid = roundCents(toAmount(locked.amountPaid) + data.amount);
-        const paidInFull = newPaid >= toAmount(locked.total);
-        await tx
-          .update(invoices)
-          .set({ amountPaid: String(newPaid), status: paidInFull ? "paid" : locked.status })
-          .where(eq(invoices.id, locked.id));
-      }
+    // All billing safeguards (workspace checks, invoice attribution, row
+    // lock, duplicate guard) live in the shared payment service.
+    const { clientId } = await createPayment(ctx.workspace.id, {
+      clientId: data.clientId, invoiceId: data.invoiceId, amount: data.amount, status: data.status,
+      paymentType: data.paymentType, billingMonth: data.billingMonth, method: data.method,
+      reference: data.reference, paidAt: data.paidAt,
     });
 
     await logActivity({
       workspaceId: ctx.workspace.id, actorId: ctx.user.id,
       action: "payment.recorded", entityType: "payment",
-      clientId: attribution.clientId,
+      clientId,
       metadata: { amount: data.amount, method: data.method ?? undefined },
     });
-    revalidateBilling(attribution.clientId);
+    revalidateBilling(clientId);
     revalidateGoals();
     return { ok: true };
   } catch (err) {

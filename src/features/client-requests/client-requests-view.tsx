@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -38,6 +39,34 @@ export const REQUEST_STATUS_LABEL: Record<(typeof CLIENT_REQUEST_STATUSES)[numbe
   complete: "Complete",
   client_notified: "Client notified",
 };
+
+function ClientUpdateEditor({ request }: { request: ClientRequestRow }) {
+  const router = useRouter();
+  const [value, setValue] = useState(request.clientUpdate ?? "");
+  const [saving, setSaving] = useState(false);
+  const dirty = value.trim() !== (request.clientUpdate ?? "");
+  return (
+    <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center">
+      <Input
+        value={value} onChange={(e) => setValue(e.target.value)} maxLength={1000}
+        placeholder="Update shown to the client in their portal…"
+        className="h-8 flex-1 text-xs" aria-label="Client-visible update"
+      />
+      <Button
+        size="sm" variant="outline" className="h-8 px-2.5 text-xs" disabled={!dirty || saving}
+        onClick={async () => {
+          setSaving(true);
+          const result = await updateClientRequestStatus(request.id, { status: request.status, clientUpdate: value });
+          setSaving(false);
+          if (!result.ok) toast.error(result.error);
+          else { toast.success("Client update saved"); router.refresh(); }
+        }}
+      >
+        {saving ? "Saving…" : "Save update"}
+      </Button>
+    </div>
+  );
+}
 
 export function ClientRequestsView({
   items, clients, members,
@@ -118,7 +147,11 @@ export function ClientRequestsView({
               <div className="flex flex-wrap items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[13.5px] font-semibold">{r.clientName ?? "Unknown client"}</p>
+                    {r.clientId ? (
+                      <Link href={`/clients/${r.clientId}`} className="rounded-sm text-[13.5px] font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary">{r.clientName ?? "Unknown client"}</Link>
+                    ) : (
+                      <p className="text-[13.5px] font-semibold">{r.clientName ?? "Unknown client"}</p>
+                    )}
                     <StatusBadge status={r.type} tone="neutral" />
                     <StatusBadge status={r.priority} />
                   </div>
@@ -136,6 +169,7 @@ export function ClientRequestsView({
                 </select>
               </div>
               <p className="mt-2 text-[12.5px]">{r.description}</p>
+              <ClientUpdateEditor request={r} />
               <div className="mt-3 flex items-center gap-2">
                 {r.taskId ? (
                   <span className="text-[11.5px] text-muted-foreground">Linked task: {r.taskTitle}</span>

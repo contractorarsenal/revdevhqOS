@@ -159,8 +159,8 @@ export async function createManualClientLead(input: unknown): Promise<ActionResu
 
     revalidatePath(`/clients/${data.clientId}`);
     revalidatePath(`/clients/${data.clientId}/leads`);
-    revalidatePath("/portal");
-    revalidatePath("/portal/leads");
+    revalidatePath("/clientportal/dashboard");
+    revalidatePath("/clientportal/leads");
     // Deliberately no revalidateGoalPaths() here — new_leads is a sales
     // (leads table) goal metric; client leads are a separate table/metric
     // universe entirely (see the sales/client leads split).

@@ -17,15 +17,15 @@ describe("MobileBottomNav", () => {
     const items = nav.querySelectorAll(":scope > a, :scope > button");
     expect(items).toHaveLength(5);
     expect(Array.from(items).map((el) => el.textContent)).toEqual([
-      "Dashboard", "Needs Jay", "Leads", "Clients", "More",
+      "Home", "Clients", "Tasks", "Needs Jay", "More",
     ]);
   });
 
   it("marks the active route with aria-current", () => {
     render(<MobileBottomNav />);
-    const dashboardLink = screen.getByRole("link", { name: /Dashboard/ });
+    const dashboardLink = screen.getByRole("link", { name: /Home/ });
     expect(dashboardLink).toHaveAttribute("aria-current", "page");
-    const leadsLink = screen.getByRole("link", { name: /Leads/ });
+    const leadsLink = screen.getByRole("link", { name: /Clients/ });
     expect(leadsLink).not.toHaveAttribute("aria-current");
   });
 

@@ -74,6 +74,8 @@ beforeAll(async () => {
       submitted_by uuid,
       task_id uuid,
       resolution_notes text,
+      project_id uuid,
+      client_update text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -94,6 +96,7 @@ beforeAll(async () => {
       scheduled_start_time text,
       scheduled_end_time text,
       all_day boolean NOT NULL DEFAULT false,
+      client_visible boolean NOT NULL DEFAULT false,
       calendar_visible boolean NOT NULL DEFAULT true,
       completed_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),

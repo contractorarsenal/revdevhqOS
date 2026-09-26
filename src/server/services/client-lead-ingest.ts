@@ -88,8 +88,8 @@ export async function executeClientLeadIngest(args: {
 
     revalidatePath(`/clients/${data.clientId}`);
     revalidatePath(`/clients/${data.clientId}/leads`);
-    revalidatePath("/portal");
-    revalidatePath("/portal/leads");
+    revalidatePath("/clientportal/dashboard");
+    revalidatePath("/clientportal/leads");
     return { ok: true, data: { id, duplicate } };
   } catch (err) {
     return actionError(err);

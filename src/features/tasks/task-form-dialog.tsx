@@ -87,6 +87,7 @@ function TaskFormBody({
       opportunityId: task?.opportunityId ?? "",
       projectId: fixedProjectId ?? task?.projectId ?? "",
       dueDate: task?.dueDateValue ?? "",
+      clientVisible: task?.clientVisible ?? false,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -215,6 +216,10 @@ function TaskFormBody({
               </div>
             )}
           </div>
+          <label className="col-span-2 flex items-center gap-2 text-sm">
+            <input type="checkbox" {...form.register("clientVisible")} className="size-4 accent-[var(--primary)]" />
+            Visible to the client in their portal checklist
+          </label>
           {serverError && <p className="col-span-2 text-sm text-destructive">{serverError}</p>}
           <DialogFooter className="col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

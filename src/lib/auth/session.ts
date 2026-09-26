@@ -53,12 +53,14 @@ export const requireUser = cache(async (): Promise<AppUser> => {
   // Read-first: a SELECT on every request is far cheaper than an upsert
   // write. The insert only happens on the user's first request (or if the
   // auth email changed).
+  let profileName: string | null = null;
   await guardInfra(async () => {
     const [existing] = await db
-      .select({ id: profiles.id, email: profiles.email })
+      .select({ id: profiles.id, email: profiles.email, name: profiles.name })
       .from(profiles)
       .where(eq(profiles.id, user.id))
       .limit(1);
+    profileName = existing?.name?.trim() || null;
     if (!existing) {
       await db
         .insert(profiles)
@@ -69,7 +71,9 @@ export const requireUser = cache(async (): Promise<AppUser> => {
     }
   });
 
-  return { id: user.id, name, email };
+  // The profile row is the editable source of truth (e.g. portal Account page);
+  // auth metadata is only the initial value.
+  return { id: user.id, name: profileName || name, email };
 });
 
 export type WorkspaceContext = {

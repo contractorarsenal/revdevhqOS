@@ -16,6 +16,8 @@ const PUBLIC_PATHS = [
   "/auth",
   "/setup-required",
   "/portal/accept-invite",
+  "/clientportal/signin",
+  "/clientportal/accept-invite",
   "/robots.txt",
   "/sitemap.xml",
   // Inbox has no browser session. The route rejects callers that do not
@@ -52,14 +54,29 @@ export default async function proxy(request: NextRequest) {
   // route stays protected by default.
   const isPublic = pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
+  const inClientPortal = pathname === "/clientportal" || pathname.startsWith("/clientportal/");
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
-    url.pathname = "/sign-in";
+    // Logged-out visitors of the client portal go to the portal's own sign-in.
+    url.pathname = inClientPortal ? "/clientportal/signin" : "/sign-in";
+    url.search = "";
     return NextResponse.redirect(url);
   }
   if (user && (pathname === "/sign-in" || pathname === "/sign-up")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+  // "/clientportal" is only a doorway: authenticated -> dashboard.
+  // (Unauthenticated visitors were redirected to the sign-in above.)
+  if (user && (pathname === "/clientportal" || pathname === "/clientportal/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/clientportal/dashboard";
+    return NextResponse.redirect(url);
+  }
+  if (user && pathname === "/clientportal/signin") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/clientportal/dashboard";
     return NextResponse.redirect(url);
   }
   return response;

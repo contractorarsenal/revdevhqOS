@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { SIDEBAR_PRIMARY_NAV, SIDEBAR_SECONDARY_NAV, matchesNavHref } from "@/components/layout/nav-items";
+import { NAV_GROUPS, matchesNavHref } from "@/components/layout/nav-items";
 
 /** Left-side drawer for tablet / small-laptop widths (`md` up to `lg`),
  * where there's no room for the full sidebar but the mobile bottom nav
@@ -33,45 +33,31 @@ export function TabletNavDrawer({ workspaceName, userName, role }: { workspaceNa
           <SheetTitle>{workspaceName}</SheetTitle>
         </SheetHeader>
         <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 py-3">
-          {SIDEBAR_PRIMARY_NAV.map((item) => {
-            const active = matchesNavHref(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                onClick={() => setOpen(false)}
-                className={cn(
-                  "flex min-h-11 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-white/5",
-                  active && "bg-sidebar-accent font-semibold text-foreground"
-                )}
-              >
-                <item.icon className={cn("size-4", active && "text-primary")} aria-hidden />
-                {item.label}
-              </Link>
-            );
-          })}
-          <p className="px-2.5 pb-1 pt-4 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            Workspace
-          </p>
-          {SIDEBAR_SECONDARY_NAV.map((item) => {
-            const active = matchesNavHref(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                onClick={() => setOpen(false)}
-                className={cn(
-                  "flex min-h-11 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-white/5",
-                  active && "bg-sidebar-accent font-semibold text-foreground"
-                )}
-              >
-                <item.icon className={cn("size-4", active && "text-primary")} aria-hidden />
-                {item.label}
-              </Link>
-            );
-          })}
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="flex flex-col gap-0.5 pb-2">
+              {group.label !== "Main" && (
+                <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">{group.label}</p>
+              )}
+              {group.items.map((item) => {
+                const active = matchesNavHref(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => setOpen(false)}
+                    className={cn(
+                      "flex min-h-11 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-white/5",
+                      active && "bg-sidebar-accent font-semibold text-foreground"
+                    )}
+                  >
+                    <item.icon className={cn("size-4", active && "text-primary")} aria-hidden />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-2 px-1">

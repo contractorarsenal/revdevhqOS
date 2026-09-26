@@ -1,8 +1,8 @@
 import "server-only";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { calculateProjectProgress } from "@/lib/calendar-feed";
 import { db } from "@/lib/db";
-import { projects, tasks, profiles, clients } from "@/lib/db/schema";
+import { projects, tasks, profiles, clients, projectUpdates } from "@/lib/db/schema";
 
 export async function listProjects(workspaceId: string, includeArchived = false) {
   const rows = await db
@@ -10,7 +10,8 @@ export async function listProjects(workspaceId: string, includeArchived = false)
       id: projects.id, name: projects.name, description: projects.description, status: projects.status,
       ownerId: projects.ownerId, ownerName: profiles.name, clientId: projects.clientId, clientName: clients.name,
       startDate: projects.startDate, dueDate: projects.dueDate, waitingOn: projects.waitingOn,
-      nextAction: projects.nextAction, color: projects.color, createdAt: projects.createdAt, updatedAt: projects.updatedAt,
+      nextAction: projects.nextAction, waitingOnParty: projects.waitingOnParty,
+      clientVisible: projects.clientVisible, clientSummary: projects.clientSummary, color: projects.color, createdAt: projects.createdAt, updatedAt: projects.updatedAt,
     })
     .from(projects)
     .leftJoin(profiles, eq(projects.ownerId, profiles.id))
@@ -48,7 +49,8 @@ export async function getProjectDetail(workspaceId: string, projectId: string) {
       id: projects.id, name: projects.name, description: projects.description, status: projects.status,
       ownerId: projects.ownerId, ownerName: profiles.name, clientId: projects.clientId, clientName: clients.name,
       startDate: projects.startDate, dueDate: projects.dueDate, waitingOn: projects.waitingOn,
-      nextAction: projects.nextAction, color: projects.color, createdAt: projects.createdAt, updatedAt: projects.updatedAt,
+      nextAction: projects.nextAction, waitingOnParty: projects.waitingOnParty,
+      clientVisible: projects.clientVisible, clientSummary: projects.clientSummary, color: projects.color, createdAt: projects.createdAt, updatedAt: projects.updatedAt,
     })
     .from(projects)
     .leftJoin(profiles, eq(projects.ownerId, profiles.id))
@@ -61,11 +63,20 @@ export async function getProjectDetail(workspaceId: string, projectId: string) {
     .select({
       id: tasks.id, title: tasks.title, status: tasks.status, priority: tasks.priority,
       dueDate: tasks.dueDate, scheduledDate: tasks.scheduledDate, assigneeId: tasks.assigneeId, assigneeName: profiles.name,
+      clientVisible: tasks.clientVisible,
     })
     .from(tasks)
     .leftJoin(profiles, eq(tasks.assigneeId, profiles.id))
     .where(and(eq(tasks.projectId, projectId), eq(tasks.workspaceId, workspaceId)))
     .orderBy(tasks.createdAt);
+
+  const updates = await db
+    .select({ id: projectUpdates.id, body: projectUpdates.body, clientVisible: projectUpdates.clientVisible, createdAt: projectUpdates.createdAt, authorName: profiles.name })
+    .from(projectUpdates)
+    .leftJoin(profiles, eq(projectUpdates.authorId, profiles.id))
+    .where(and(eq(projectUpdates.projectId, projectId), eq(projectUpdates.workspaceId, workspaceId)))
+    .orderBy(desc(projectUpdates.createdAt))
+    .limit(20);
 
   const completed = projectTasks.filter((t) => t.status === "completed").length;
   const upcoming = projectTasks.filter((t) => t.scheduledDate && t.status !== "completed" && t.status !== "canceled");
@@ -73,6 +84,7 @@ export async function getProjectDetail(workspaceId: string, projectId: string) {
   return {
     project,
     tasks: projectTasks,
+    updates,
     taskCount: projectTasks.length,
     completedCount: completed,
     progress: calculateProjectProgress(projectTasks.length, completed),

@@ -9,9 +9,10 @@ describe("navigation regression guards", () => {
     // requireClientPortalUser() redirects suspended/revoked members to this
     // page (see src/lib/auth/session.ts + src/lib/portal.ts's
     // resolvePostLoginDestination). It must stay nav-free.
-    const source = read("src/app/portal/access-denied/page.tsx");
+    const source = read("src/app/clientportal/access-denied/page.tsx");
     expect(source).not.toContain("PortalMobileNav");
     expect(source).not.toContain("PortalShell");
+    expect(source).not.toContain("ClientPortalShell");
   });
 
   it("the internal dashboard layout renders the mobile bottom nav and reserves space for it", () => {
@@ -22,7 +23,7 @@ describe("navigation regression guards", () => {
 
   it("the internal portal-preview route disables the client portal's own nav (avoids stacking two bottom bars)", () => {
     const source = read("src/app/(dashboard)/clients/[id]/portal-preview/page.tsx");
-    expect(source).toContain("showNav={false}");
+    expect(source).toContain("staticNav");
   });
 
   it("the public landing page does not depend on internal or portal navigation components", () => {

@@ -53,6 +53,8 @@ beforeAll(async () => {
       submitted_by uuid,
       task_id uuid,
       resolution_notes text,
+      project_id uuid,
+      client_update text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
