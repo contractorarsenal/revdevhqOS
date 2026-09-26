@@ -92,7 +92,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-9">
         <Kpi label="Collected today" value={formatMoney(metrics.collectedToday)} href="/billing?tab=payments" />
         <Kpi label="Collected MTD" value={formatMoney(metrics.collectedThisMonth)} href="/billing?tab=payments" />
         <Kpi label="MRR" value={formatMoney(metrics.mrr)} href="/billing" />
