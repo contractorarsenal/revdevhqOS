@@ -121,7 +121,7 @@ describe("getOperationalMetrics", () => {
     await client.exec(`
       INSERT INTO client_leads (workspace_id, client_id, received_at) VALUES
         ('${WS1}', '${CLIENT1}', now()),
-        ('${WS1}', '${CLIENT1}', now() - interval '1 hour'),
+        ('${WS1}', '${CLIENT1}', now() - interval '1 minute'),
         ('${WS1}', '${CLIENT1}', now() - interval '2 days'),
         ('${WS2}', '${CLIENT1}', now());
     `);
